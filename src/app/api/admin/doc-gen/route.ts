@@ -5,6 +5,7 @@ import { prisma } from "@/lib/prisma";
 import { ensureTemplatesRegistered } from "@/lib/doc-gen/init";
 import { generateDocument } from "@/lib/doc-gen/ai-engine";
 import { getTemplate, listTemplates } from "@/lib/doc-gen/template-registry";
+import { AI_MODELS } from "@/lib/doc-gen/models";
 
 export async function GET(request: NextRequest) {
   const authError = await requireAdminAuth(request);
@@ -16,7 +17,7 @@ export async function GET(request: NextRequest) {
   const action = searchParams.get("action");
 
   if (action === "templates") {
-    return NextResponse.json({ templates: listTemplates() });
+    return NextResponse.json({ templates: listTemplates(), models: AI_MODELS });
   }
 
   if (action === "preview-default") {
@@ -55,7 +56,7 @@ export async function POST(request: NextRequest) {
   ensureTemplatesRegistered();
 
   const body = await request.json();
-  const { prompt, templateType, data: directData } = body;
+  const { prompt, templateType, modelId, data: directData } = body;
 
   if (!prompt && !directData) {
     return NextResponse.json(
@@ -81,7 +82,7 @@ export async function POST(request: NextRequest) {
       generatedData = directData;
       resolvedType = templateType;
     } else {
-      const result = await generateDocument(prompt, templateType);
+      const result = await generateDocument(prompt, templateType, modelId);
       html = result.html;
       generatedData = result.data;
       resolvedType = result.templateType;

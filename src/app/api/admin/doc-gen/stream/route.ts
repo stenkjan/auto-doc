@@ -10,7 +10,7 @@ export async function POST(request: NextRequest) {
 
   ensureTemplatesRegistered();
 
-  const { prompt, templateType } = await request.json();
+  const { prompt, templateType, modelId } = await request.json();
 
   if (!prompt) {
     return NextResponse.json(
@@ -33,7 +33,7 @@ export async function POST(request: NextRequest) {
 
         let resolvedType = templateType;
         if (!resolvedType) {
-          const classification = await classifyIntent(prompt);
+          const classification = await classifyIntent(prompt, modelId);
           resolvedType = classification.templateType;
           send("classification", classification);
         }
@@ -53,7 +53,7 @@ export async function POST(request: NextRequest) {
           templateType: resolvedType,
         });
 
-        const data = await generateDocumentData(prompt, resolvedType);
+        const data = await generateDocumentData(prompt, resolvedType, modelId);
         send("data", { templateType: resolvedType, data });
 
         const html = template.generateHTML(data);
