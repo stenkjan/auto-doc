@@ -1,0 +1,42 @@
+{
+  "name": "auto-doc",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev",
+    "build": "npx prisma generate && next build",
+    "start": "next start",
+    "lint": "next lint",
+    "db:push": "npx prisma db push",
+    "db:studio": "npx prisma studio",
+    "postinstall": "npx prisma generate"
+  },
+  "dependencies": {
+    "@ai-sdk/anthropic": "^3.0.58",
+    "@anthropic-ai/sdk": "^0.78.0",
+    "@prisma/client": "^7.5.0",
+    "@sparticuz/chromium": "^143.0.4",
+    "ai": "^6.0.116",
+    "googleapis": "^171.4.0",
+    "next": "^16.1.6",
+    "prisma": "^7.5.0",
+    "puppeteer-core": "^24.39.1",
+    "react": "^19.2.4",
+    "react-dom": "^19.2.4",
+    "react-hot-toast": "^2.6.0",
+    "zod": "^4.3.6",
+    "zustand": "^5.0.11"
+  },
+  "devDependencies": {
+    "@eslint/eslintrc": "^3.3.5",
+    "@tailwindcss/postcss": "^4.2.1",
+    "@types/node": "^25.5.0",
+    "@types/react": "^19.2.14",
+    "@types/react-dom": "^19.2.3",
+    "eslint": "^9.39.4",
+    "eslint-config-next": "^16.1.6",
+    "postcss": "^8.5.8",
+    "tailwindcss": "^4.2.1",
+    "typescript": "^5.9.3"
+  }
+}

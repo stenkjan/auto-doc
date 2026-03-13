@@ -1,0 +1,28 @@
+generator client {
+  provider = "prisma-client-js"
+  output   = "../node_modules/.prisma/client"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model GeneratedDocument {
+  id            String   @id @default(cuid())
+  hash          String   @unique
+  templateType  String
+  title         String
+  prompt        String
+  inputData     Json
+  generatedData Json
+  createdBy     String   @default("admin")
+  driveFileId   String?
+  driveUrl      String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@index([hash])
+  @@index([templateType])
+  @@index([createdAt])
+  @@map("generated_documents")
+}
