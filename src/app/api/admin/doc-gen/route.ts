@@ -2,32 +2,18 @@ import { NextRequest, NextResponse } from "next/server";
 import crypto from "crypto";
 import { requireAdminAuth } from "@/lib/admin-auth";
 import { prisma } from "@/lib/prisma";
-import { ensureTemplatesRegistered } from "@/lib/doc-gen/init";
-import { generateDocument } from "@/lib/doc-gen/ai-engine";
-import { getTemplate, listTemplates } from "@/lib/doc-gen/template-registry";
-import { AI_MODELS } from "@/lib/doc-gen/models";
+import { generateMarkdownDocument } from "@/lib/doc-gen/ai-engine";
+import { AI_MODELS, DEFAULT_MODEL_ID } from "@/lib/doc-gen/models";
 
 export async function GET(request: NextRequest) {
   const authError = await requireAdminAuth(request);
   if (authError) return authError;
 
-  ensureTemplatesRegistered();
-
   const { searchParams } = new URL(request.url);
   const action = searchParams.get("action");
 
-  if (action === "templates") {
-    return NextResponse.json({ templates: listTemplates(), models: AI_MODELS });
-  }
-
-  if (action === "preview-default") {
-    const type = searchParams.get("type") ?? "cost-plan";
-    const template = getTemplate(type);
-    if (!template) {
-      return NextResponse.json({ error: "Unknown template" }, { status: 404 });
-    }
-    const html = template.generateHTML(template.defaultData);
-    return NextResponse.json({ html, data: template.defaultData });
+  if (action === "models") {
+    return NextResponse.json({ models: AI_MODELS });
   }
 
   try {
@@ -53,57 +39,42 @@ export async function POST(request: NextRequest) {
   const authError = await requireAdminAuth(request);
   if (authError) return authError;
 
-  ensureTemplatesRegistered();
-
   const body = await request.json();
-  const { prompt, templateType, modelId, data: directData } = body;
+  const {
+    prompt,
+    modelId = DEFAULT_MODEL_ID,
+    existingMarkdown,
+  } = body as {
+    prompt?: string;
+    modelId?: string;
+    existingMarkdown?: string;
+  };
 
-  if (!prompt && !directData) {
-    return NextResponse.json(
-      { error: "Either prompt or data is required" },
-      { status: 400 }
-    );
+  if (!prompt) {
+    return NextResponse.json({ error: "Prompt is required" }, { status: 400 });
   }
 
   try {
-    let html: string;
-    let generatedData: unknown;
-    let resolvedType: string;
-
-    if (directData && templateType) {
-      const template = getTemplate(templateType);
-      if (!template) {
-        return NextResponse.json(
-          { error: `Unknown template: ${templateType}` },
-          { status: 400 }
-        );
-      }
-      html = template.generateHTML(directData);
-      generatedData = directData;
-      resolvedType = templateType;
-    } else {
-      const result = await generateDocument(prompt, templateType, modelId);
-      html = result.html;
-      generatedData = result.data;
-      resolvedType = result.templateType;
-    }
+    const { markdown } = await generateMarkdownDocument(
+      prompt,
+      modelId,
+      existingMarkdown
+    );
 
     const hash = crypto.randomBytes(8).toString("hex");
-    const title =
-      (generatedData as Record<string, string>)?.clientName ??
-      (generatedData as Record<string, string>)?.projectRef ??
-      `Document ${hash}`;
+    const titleMatch = markdown.match(/^#\s+(.+)$/m);
+    const title = titleMatch ? titleMatch[1].trim() : `Dokument ${hash}`;
 
     let document = null;
     try {
       document = await prisma.generatedDocument.create({
         data: {
           hash,
-          templateType: resolvedType,
+          templateType: "markdown",
           title,
-          prompt: prompt ?? "Direct data input",
-          inputData: body,
-          generatedData: generatedData as object,
+          prompt,
+          inputData: { prompt, modelId },
+          generatedData: { markdown },
         },
       });
     } catch (dbError) {
@@ -113,10 +84,8 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({
       id: document?.id ?? hash,
       hash,
-      templateType: resolvedType,
       title,
-      html,
-      data: generatedData,
+      markdown,
     });
   } catch (error) {
     console.error("Document generation failed:", error);

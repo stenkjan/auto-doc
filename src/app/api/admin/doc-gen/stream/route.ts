@@ -1,16 +1,14 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireAdminAuth } from "@/lib/admin-auth";
-import { ensureTemplatesRegistered } from "@/lib/doc-gen/init";
-import { classifyIntent, generateDocumentData } from "@/lib/doc-gen/ai-engine";
-import { getTemplate, listTemplates } from "@/lib/doc-gen/template-registry";
+import { streamMarkdownDocument } from "@/lib/doc-gen/ai-engine";
+import { DEFAULT_MODEL_ID } from "@/lib/doc-gen/models";
 
 export async function POST(request: NextRequest) {
   const authError = await requireAdminAuth(request);
   if (authError) return authError;
 
-  ensureTemplatesRegistered();
-
-  const { prompt, templateType, modelId } = await request.json();
+  const { prompt, modelId = DEFAULT_MODEL_ID, existingMarkdown } =
+    await request.json();
 
   if (!prompt) {
     return NextResponse.json(
@@ -29,39 +27,21 @@ export async function POST(request: NextRequest) {
       };
 
       try {
-        send("status", { message: "Analysiere Prompt..." });
+        send("status", { message: "Generiere Dokument..." });
 
-        let resolvedType = templateType;
-        if (!resolvedType) {
-          const classification = await classifyIntent(prompt, modelId);
-          resolvedType = classification.templateType;
-          send("classification", classification);
-        }
+        let fullMarkdown = "";
 
-        const template = getTemplate(resolvedType);
-        if (!template) {
-          send("error", {
-            message: `Unbekannter Dokumenttyp: ${resolvedType}`,
-            available: listTemplates(),
-          });
-          controller.close();
-          return;
-        }
+        const { markdown } = await streamMarkdownDocument(
+          prompt,
+          modelId,
+          (chunk) => {
+            fullMarkdown += chunk;
+            send("chunk", { text: chunk });
+          },
+          existingMarkdown
+        );
 
-        send("status", {
-          message: `Generiere ${template.label}...`,
-          templateType: resolvedType,
-        });
-
-        const data = await generateDocumentData(prompt, resolvedType, modelId);
-        send("data", { templateType: resolvedType, data });
-
-        const html = template.generateHTML(data);
-        send("complete", {
-          templateType: resolvedType,
-          data,
-          html,
-        });
+        send("complete", { markdown });
       } catch (error) {
         send("error", {
           message:

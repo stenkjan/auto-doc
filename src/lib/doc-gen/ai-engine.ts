@@ -1,7 +1,6 @@
 import Anthropic from "@anthropic-ai/sdk";
 import fs from "fs/promises";
 import path from "path";
-import { getTemplate, listTemplates, getSchemaDescription } from "./template-registry";
 import { getModel, DEFAULT_MODEL_ID, type AIModel } from "./models";
 
 /* ------------------------------------------------------------------ */
@@ -21,34 +20,19 @@ async function loadRulesFile(relativePath: string): Promise<string> {
   }
 }
 
-async function buildSystemPrompt(templateType?: string): Promise<string> {
+async function buildSystemPrompt(): Promise<string> {
   const globalRules = await loadRulesFile("global-rules.md");
   const permissions = await loadRulesFile("user-permissions.md");
-  const templateList = listTemplates()
-    .map((t) => `- **${t.type}**: ${t.label} – ${t.description}`)
-    .join("\n");
-  let typeRules = "";
-  if (templateType) {
-    typeRules = await loadRulesFile(`document-types/${templateType}.md`);
-  }
+
   return `Du bist ein Dokumentengenerator-Assistent für die Firma Hoam (Eco Chalets GmbH).
-Deine Aufgabe ist es, aus Benutzer-Prompts strukturierte JSON-Daten zu erzeugen,
-die dann in professionelle PDF-Dokumente umgewandelt werden.
+Erstelle das gewünschte Dokument als professionell formatiertes Markdown.
+Nutze Überschriften (##, ###), Tabellen, Listen und Fettdruck um das Dokument klar zu strukturieren.
+Alle Texte auf Deutsch (Österreich). Verwende österreichische Zahlen- und Datumsformatierung.
+Antworte NUR mit dem Markdown-Dokument – kein einleitendes Text, keine Erklärungen davor oder danach.
 
 ${globalRules}
 
-${permissions}
-
-## Verfügbare Dokumentvorlagen
-${templateList}
-
-${typeRules ? `## Spezifische Regeln für "${templateType}"\n${typeRules}` : ""}
-
-## Wichtige Anweisungen
-- Antworte IMMER mit validem JSON, das exakt dem Schema der gewählten Vorlage entspricht.
-- Kein Markdown, keine Erklärungen – nur das JSON-Objekt.
-- Verwende sinnvolle Standardwerte für fehlende Felder.
-- Alle Texte auf Deutsch (Österreich).`;
+${permissions}`;
 }
 
 /* ------------------------------------------------------------------ */
@@ -128,7 +112,6 @@ async function callOpenRouter(
   const apiKey = process.env.OPENROUTER_API_KEY;
   if (!apiKey) throw new Error("OPENROUTER_API_KEY not configured");
 
-  // Strip "openrouter/" prefix to get the actual model path
   const actualModel = modelId.replace(/^openrouter\//, "");
 
   const res = await fetch("https://openrouter.ai/api/v1/chat/completions", {
@@ -159,107 +142,112 @@ async function callOpenRouter(
 }
 
 /* ------------------------------------------------------------------ */
+/*  Anthropic streaming helper (Anthropic provider only)              */
+/* ------------------------------------------------------------------ */
+
+export async function streamAnthropicMarkdown(
+  modelId: string,
+  system: string,
+  userMessage: string,
+  onChunk: (text: string) => void
+): Promise<string> {
+  const apiKey = process.env.ANTHROPIC_API_KEY;
+  if (!apiKey) throw new Error("ANTHROPIC_API_KEY not configured");
+
+  const client = new Anthropic({ apiKey });
+  let full = "";
+
+  const stream = client.messages.stream({
+    model: modelId,
+    max_tokens: 8192,
+    system,
+    messages: [{ role: "user", content: userMessage }],
+  });
+
+  for await (const event of stream) {
+    if (
+      event.type === "content_block_delta" &&
+      event.delta.type === "text_delta"
+    ) {
+      const chunk = event.delta.text;
+      full += chunk;
+      onChunk(chunk);
+    }
+  }
+
+  return full;
+}
+
+/* ------------------------------------------------------------------ */
 /*  Public functions                                                    */
 /* ------------------------------------------------------------------ */
 
-export interface ClassificationResult {
-  templateType: string;
-  confidence: number;
-  extractedFields: Record<string, unknown>;
-  missingFields: string[];
-}
-
-export async function classifyIntent(
+/**
+ * Generate a Markdown document from a user prompt.
+ * Optionally pass existingMarkdown to have Claude refine/edit it.
+ */
+export async function generateMarkdownDocument(
   prompt: string,
-  modelId: string = DEFAULT_MODEL_ID
-): Promise<ClassificationResult> {
-  const model = getModel(modelId);
-  if (!model) throw new Error(`Unknown model: ${modelId}`);
-
-  const templates = listTemplates();
-  const templateInfo = templates
-    .map((t) => `${t.type}: ${t.label} – ${t.description}`)
-    .join("\n");
-
-  const system = `Du analysierst Benutzer-Prompts und klassifizierst, welcher Dokumenttyp gewünscht wird.
-Verfügbare Typen:\n${templateInfo}
-
-Antworte NUR mit einem JSON-Objekt in diesem Format:
-{
-  "templateType": "<typ>",
-  "confidence": <0.0-1.0>,
-  "extractedFields": { ... alle erkannten Datenfelder ... },
-  "missingFields": ["feld1", "feld2"]
-}`;
-
-  const text = await callModel(model, system, prompt);
-  const jsonMatch = text.match(/\{[\s\S]*\}/);
-  if (!jsonMatch) throw new Error("Model returned no valid JSON for classification");
-
-  return JSON.parse(jsonMatch[0]) as ClassificationResult;
-}
-
-export async function generateDocumentData(
-  prompt: string,
-  templateType: string,
   modelId: string = DEFAULT_MODEL_ID,
-  existingData?: Record<string, unknown>
-): Promise<unknown> {
-  const template = getTemplate(templateType);
-  if (!template) throw new Error(`Unknown template type: ${templateType}`);
-
+  existingMarkdown?: string
+): Promise<{ markdown: string }> {
   const model = getModel(modelId);
   if (!model) throw new Error(`Unknown model: ${modelId}`);
 
-  const schemaDescription = getSchemaDescription(templateType);
-  const systemPrompt = await buildSystemPrompt(templateType);
+  const systemPrompt = await buildSystemPrompt();
 
-  const userMessage = existingData
-    ? `Benutzer-Prompt: ${prompt}
+  const userMessage = existingMarkdown
+    ? `Aktuelles Dokument (bitte entsprechend dem neuen Prompt anpassen):
 
-Bereits vorhandene Daten (ergänze/überschreibe basierend auf dem Prompt):
-${JSON.stringify(existingData, null, 2)}
+\`\`\`markdown
+${existingMarkdown}
+\`\`\`
 
-JSON-Schema der Vorlage:
-${schemaDescription}
+Neuer Prompt: ${prompt}`
+    : prompt;
 
-Erzeuge das vollständige JSON-Objekt für die Dokumentvorlage "${templateType}".`
-    : `Benutzer-Prompt: ${prompt}
-
-JSON-Schema der Vorlage:
-${schemaDescription}
-
-Erzeuge das vollständige JSON-Objekt für die Dokumentvorlage "${templateType}".
-Verwende die Standardwerte als Basis und passe sie gemäß dem Prompt an.`;
-
-  const text = await callModel(model, systemPrompt, userMessage);
-  const jsonMatch = text.match(/\{[\s\S]*\}/);
-  if (!jsonMatch) throw new Error("Model returned no valid JSON for document generation");
-
-  const parsed = JSON.parse(jsonMatch[0]);
-  const validation = template.schema.safeParse(parsed);
-  if (!validation.success) {
-    console.warn("Validation failed, using raw data:", validation.error);
-    return parsed;
-  }
-  return validation.data;
+  const markdown = await callModel(model, systemPrompt, userMessage);
+  return { markdown };
 }
 
-export async function generateDocument(
+/**
+ * Stream a Markdown document from a user prompt (Anthropic only; falls back to non-streaming for other providers).
+ * onChunk is called with each text delta as it arrives.
+ * Returns the full markdown string when done.
+ */
+export async function streamMarkdownDocument(
   prompt: string,
-  templateType?: string,
-  modelId: string = DEFAULT_MODEL_ID
-) {
-  if (!templateType) {
-    const classification = await classifyIntent(prompt, modelId);
-    templateType = classification.templateType;
+  modelId: string = DEFAULT_MODEL_ID,
+  onChunk: (text: string) => void,
+  existingMarkdown?: string
+): Promise<{ markdown: string }> {
+  const model = getModel(modelId);
+  if (!model) throw new Error(`Unknown model: ${modelId}`);
+
+  const systemPrompt = await buildSystemPrompt();
+
+  const userMessage = existingMarkdown
+    ? `Aktuelles Dokument (bitte entsprechend dem neuen Prompt anpassen):
+
+\`\`\`markdown
+${existingMarkdown}
+\`\`\`
+
+Neuer Prompt: ${prompt}`
+    : prompt;
+
+  if (model.provider === "anthropic") {
+    const markdown = await streamAnthropicMarkdown(
+      model.id,
+      systemPrompt,
+      userMessage,
+      onChunk
+    );
+    return { markdown };
   }
 
-  const template = getTemplate(templateType);
-  if (!template) throw new Error(`Unknown template type: ${templateType}`);
-
-  const data = await generateDocumentData(prompt, templateType, modelId);
-  const html = template.generateHTML(data);
-
-  return { templateType, data, html };
+  // Non-Anthropic providers: call synchronously and emit as one chunk
+  const markdown = await callModel(model, systemPrompt, userMessage);
+  onChunk(markdown);
+  return { markdown };
 }
