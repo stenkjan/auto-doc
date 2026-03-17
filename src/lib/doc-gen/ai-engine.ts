@@ -46,7 +46,12 @@ async function callModel(
   const apiKey = process.env.OPENROUTER_API_KEY;
   if (!apiKey) throw new Error("OPENROUTER_API_KEY not configured");
 
-  const actualModel = model.id.replace(/^openrouter\//, "");
+  // Special OpenRouter routing aliases stay as-is (e.g. "openrouter/free", "openrouter/auto")
+  // Regular models strip only the "openrouter/" vendor prefix (e.g. "openrouter/meta-llama/llama-4-scout" → "meta-llama/llama-4-scout")
+  const OPENROUTER_ALIASES = ["openrouter/free", "openrouter/auto"];
+  const actualModel = OPENROUTER_ALIASES.includes(model.id)
+    ? model.id
+    : model.id.replace(/^openrouter\//, "");
 
   const res = await fetch("https://openrouter.ai/api/v1/chat/completions", {
     method: "POST",

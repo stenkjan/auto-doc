@@ -6,33 +6,95 @@ import {
 } from "@/lib/doc-gen/drive-output";
 import mammoth from "mammoth";
 
+function isDriveUrl(url: string): boolean {
+  return (
+    url.includes("drive.google.com") ||
+    url.includes("docs.google.com") ||
+    url.includes("sheets.google.com") ||
+    url.includes("slides.google.com")
+  );
+}
+
+async function fetchWebUrl(url: string): Promise<{ name: string; content: string; type: "text" }> {
+  const res = await fetch(url, {
+    headers: {
+      "User-Agent": "Mozilla/5.0 (compatible; AutoDoc/1.0)",
+      Accept: "text/html,text/plain,application/json,*/*",
+    },
+    signal: AbortSignal.timeout(15000),
+  });
+
+  if (!res.ok) {
+    throw new Error(`Fehler beim Laden der URL (${res.status}): ${url}`);
+  }
+
+  const contentType = res.headers.get("content-type") ?? "";
+  const rawText = await res.text();
+
+  let content = rawText;
+
+  // Strip HTML tags to plain text
+  if (contentType.includes("text/html")) {
+    content = rawText
+      // Remove script and style blocks
+      .replace(/<script[\s\S]*?<\/script>/gi, "")
+      .replace(/<style[\s\S]*?<\/style>/gi, "")
+      // Replace block elements with newlines
+      .replace(/<\/(p|div|h[1-6]|li|tr|td|th|br|section|article|header|footer)>/gi, "\n")
+      // Strip all remaining tags
+      .replace(/<[^>]+>/g, "")
+      // Decode common HTML entities
+      .replace(/&amp;/g, "&")
+      .replace(/&lt;/g, "<")
+      .replace(/&gt;/g, ">")
+      .replace(/&quot;/g, '"')
+      .replace(/&#39;/g, "'")
+      .replace(/&nbsp;/g, " ")
+      // Collapse whitespace
+      .replace(/\n{3,}/g, "\n\n")
+      .trim();
+  }
+
+  // Use hostname + path as name
+  const parsed = new URL(url);
+  const name = `${parsed.hostname}${parsed.pathname}`.replace(/\/$/, "") || url;
+
+  return { name, content: content.slice(0, 80000), type: "text" };
+}
+
 export async function POST(request: NextRequest) {
   const authError = await requireAdminAuth(request);
   if (authError) return authError;
 
   const contentType = request.headers.get("content-type") ?? "";
 
-  // ── Drive URL ──────────────────────────────────────────────────────
+  // ── URL (Drive or any web URL) ─────────────────────────────────────
   if (contentType.includes("application/json")) {
-    const { driveUrl } = await request.json();
-    if (!driveUrl) {
-      return NextResponse.json({ error: "driveUrl is required" }, { status: 400 });
-    }
-
-    const fileId = extractDriveFileId(driveUrl);
-    if (!fileId) {
-      return NextResponse.json(
-        { error: "Ungültige Google Drive URL" },
-        { status: 400 }
-      );
+    const { url } = await request.json();
+    if (!url) {
+      return NextResponse.json({ error: "url is required" }, { status: 400 });
     }
 
     try {
-      const resource = await fetchDriveResource(fileId);
+      // Google Drive / Docs / Sheets → use Drive API
+      if (isDriveUrl(url)) {
+        const fileId = extractDriveFileId(url);
+        if (!fileId) {
+          return NextResponse.json(
+            { error: "Ungültige Google Drive URL – Datei-ID nicht gefunden" },
+            { status: 400 }
+          );
+        }
+        const resource = await fetchDriveResource(fileId);
+        return NextResponse.json(resource);
+      }
+
+      // Any other URL → fetch directly
+      const resource = await fetchWebUrl(url);
       return NextResponse.json(resource);
     } catch (err) {
       return NextResponse.json(
-        { error: err instanceof Error ? err.message : "Fehler beim Laden der Datei" },
+        { error: err instanceof Error ? err.message : "Fehler beim Laden der URL" },
         { status: 500 }
       );
     }

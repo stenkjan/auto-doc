@@ -30,7 +30,7 @@ export default function DocGenPage() {
 
   // Resources state
   const [resources, setResources] = useState<Resource[]>([]);
-  const [driveUrl, setDriveUrl] = useState("");
+  const [resourceUrl, setResourceUrl] = useState("");
   const [loadingResource, setLoadingResource] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
 
