@@ -1,4 +1,4 @@
-export type AIProvider = "anthropic" | "openrouter" | "gemini";
+export type AIProvider = "openrouter";
 
 export interface AIModel {
   id: string;
@@ -9,70 +9,51 @@ export interface AIModel {
 }
 
 export const AI_MODELS: AIModel[] = [
-  // Anthropic (direct)
   {
-    id: "claude-sonnet-4-20250514",
-    provider: "anthropic",
-    label: "Claude Sonnet 4",
-    description: "Schnell & günstig – empfohlen für die meisten Dokumente",
+    id: "openrouter/free",
+    provider: "openrouter",
+    label: "Free Router",
+    description: "Automatisch – wählt das beste kostenlose Modell",
     contextWindow: "200k",
   },
   {
-    id: "claude-opus-4-5",
-    provider: "anthropic",
-    label: "Claude Opus 4.5",
-    description: "Stärkste Claude-Version – für komplexe Dokumente",
-    contextWindow: "200k",
-  },
-
-  // Google Gemini (direct)
-  {
-    id: "gemini-2.5-pro-preview-03-25",
-    provider: "gemini",
-    label: "Gemini 2.5 Pro",
-    description: "Google – stark bei strukturierten Daten & langen Texten",
+    id: "openrouter/optimus-alpha",
+    provider: "openrouter",
+    label: "Optimus Alpha",
+    description: "Kostenlos – stark bei realen Aufgaben & Code",
     contextWindow: "1M",
   },
   {
-    id: "gemini-2.0-flash",
-    provider: "gemini",
-    label: "Gemini 2.0 Flash",
-    description: "Google – sehr schnell & kostengünstig",
+    id: "openrouter/quasar-alpha",
+    provider: "openrouter",
+    label: "Quasar Alpha",
+    description: "Kostenlos – gut bei langen Dokumenten",
     contextWindow: "1M",
   },
-
-  // OpenRouter (access to many models via one key)
   {
-    id: "openrouter/anthropic/claude-sonnet-4",
+    id: "openrouter/cypher-alpha",
     provider: "openrouter",
-    label: "Claude Sonnet 4 (via OpenRouter)",
-    description: "Claude über OpenRouter – flexibles Billing",
-    contextWindow: "200k",
-  },
-  {
-    id: "openrouter/google/gemini-2.5-pro-preview-03-25",
-    provider: "openrouter",
-    label: "Gemini 2.5 Pro (via OpenRouter)",
-    description: "Gemini über OpenRouter – flexibles Billing",
+    label: "Cypher Alpha",
+    description: "Kostenlos – allgemein & Code",
     contextWindow: "1M",
   },
   {
     id: "openrouter/meta-llama/llama-4-scout",
     provider: "openrouter",
-    label: "Llama 4 Scout (via OpenRouter)",
-    description: "Meta – kostenlos verfügbar, gute Qualität",
+    label: "Llama 4 Scout",
+    description: "Meta – kostenlos, 10M Kontext",
     contextWindow: "10M",
   },
   {
-    id: "openrouter/mistralai/mistral-small-3.1-24b-instruct",
+    id: "openrouter/mistralai/mistral-small-3.1-24b-instruct:free",
     provider: "openrouter",
-    label: "Mistral Small 3.1 (via OpenRouter)",
-    description: "Mistral – sehr günstig, gut für einfache Dokumente",
+    label: "Mistral Small 3.1",
+    description: "Mistral – kostenlos, gut für einfache Dokumente",
     contextWindow: "128k",
   },
 ];
 
-export const DEFAULT_MODEL_ID = "claude-sonnet-4-20250514";
+export const DEFAULT_MODEL_ID = "openrouter/free";
 
 export function getModel(id: string): AIModel | undefined {
   return AI_MODELS.find((m) => m.id === id);

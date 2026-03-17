@@ -4,7 +4,6 @@ import { useState, useCallback, useEffect, useRef } from "react";
 import dynamic from "next/dynamic";
 import remarkGfm from "remark-gfm";
 import toast from "react-hot-toast";
-import type { AIModel } from "@/lib/doc-gen/models";
 import { AI_MODELS, DEFAULT_MODEL_ID } from "@/lib/doc-gen/models";
 
 const ReactMarkdown = dynamic(() => import("react-markdown"), { ssr: false });
@@ -16,17 +15,7 @@ interface GenerationResult {
   title?: string;
 }
 
-const PROVIDER_LABELS: Record<string, string> = {
-  anthropic: "Anthropic",
-  gemini: "Google Gemini",
-  openrouter: "OpenRouter",
-};
-
-const PROVIDER_COLORS: Record<string, string> = {
-  anthropic: "bg-orange-100 text-orange-700",
-  gemini: "bg-blue-100 text-blue-700",
-  openrouter: "bg-purple-100 text-purple-700",
-};
+const FREE_BADGE = "bg-green-100 text-green-700";
 
 export default function DocGenPage() {
   const [prompt, setPrompt] = useState("");
@@ -40,7 +29,7 @@ export default function DocGenPage() {
   const modelPickerRef = useRef<HTMLDivElement>(null);
   const previewRef = useRef<HTMLDivElement>(null);
 
-  const selectedModel: AIModel =
+  const selectedModel =
     AI_MODELS.find((m) => m.id === selectedModelId) ?? AI_MODELS[0];
 
   useEffect(() => {
@@ -260,13 +249,8 @@ export default function DocGenPage() {
                 >
                   <div className="min-w-0">
                     <div className="flex items-center gap-2">
-                      <span
-                        className={`text-xs px-1.5 py-0.5 rounded font-medium shrink-0 ${
-                          PROVIDER_COLORS[selectedModel.provider] ??
-                          "bg-gray-100 text-gray-600"
-                        }`}
-                      >
-                        {PROVIDER_LABELS[selectedModel.provider]}
+                      <span className={`text-xs px-1.5 py-0.5 rounded font-medium shrink-0 ${FREE_BADGE}`}>
+                        Kostenlos
                       </span>
                       <span className="text-sm font-medium text-gray-900 truncate">
                         {selectedModel.label}
@@ -293,59 +277,36 @@ export default function DocGenPage() {
 
                 {showModelPicker && (
                   <div className="absolute z-50 left-0 right-0 top-full mt-1 bg-white border border-gray-200 rounded-xl shadow-lg overflow-hidden max-h-80 overflow-y-auto">
-                    {(["anthropic", "gemini", "openrouter"] as const).map(
-                      (provider) => {
-                        const models = AI_MODELS.filter(
-                          (m) => m.provider === provider
-                        );
-                        if (!models.length) return null;
-                        return (
-                          <div key={provider}>
-                            <div className="px-3 py-1.5 bg-gray-50 border-b border-gray-100">
-                              <span
-                                className={`text-xs font-semibold px-1.5 py-0.5 rounded ${
-                                  PROVIDER_COLORS[provider]
-                                }`}
-                              >
-                                {PROVIDER_LABELS[provider]}
-                              </span>
-                            </div>
-                            {models.map((model) => (
-                              <button
-                                key={model.id}
-                                type="button"
-                                onClick={() => {
-                                  setSelectedModelId(model.id);
-                                  setShowModelPicker(false);
-                                }}
-                                className={`w-full text-left px-3 py-2.5 hover:bg-gray-50 transition-colors border-b border-gray-50 last:border-0 ${
-                                  selectedModelId === model.id
-                                    ? "bg-blue-50"
-                                    : ""
-                                }`}
-                              >
-                                <div className="flex items-center justify-between gap-2">
-                                  <span className="text-sm font-medium text-gray-900">
-                                    {model.label}
-                                  </span>
-                                  <span className="text-xs text-gray-400 shrink-0">
-                                    {model.contextWindow} ctx
-                                  </span>
-                                </div>
-                                <p className="text-xs text-gray-400 mt-0.5">
-                                  {model.description}
-                                </p>
-                                {selectedModelId === model.id && (
-                                  <span className="text-xs text-blue-600 font-medium">
-                                    Ausgewählt
-                                  </span>
-                                )}
-                              </button>
-                            ))}
-                          </div>
-                        );
-                      }
-                    )}
+                    {AI_MODELS.map((model) => (
+                      <button
+                        key={model.id}
+                        type="button"
+                        onClick={() => {
+                          setSelectedModelId(model.id);
+                          setShowModelPicker(false);
+                        }}
+                        className={`w-full text-left px-3 py-2.5 hover:bg-gray-50 transition-colors border-b border-gray-100 last:border-0 ${
+                          selectedModelId === model.id ? "bg-blue-50" : ""
+                        }`}
+                      >
+                        <div className="flex items-center justify-between gap-2">
+                          <span className="text-sm font-medium text-gray-900">
+                            {model.label}
+                          </span>
+                          <span className="text-xs text-gray-400 shrink-0">
+                            {model.contextWindow} ctx
+                          </span>
+                        </div>
+                        <p className="text-xs text-gray-400 mt-0.5">
+                          {model.description}
+                        </p>
+                        {selectedModelId === model.id && (
+                          <span className="text-xs text-blue-600 font-medium">
+                            Ausgewählt
+                          </span>
+                        )}
+                      </button>
+                    ))}
                   </div>
                 )}
               </div>
@@ -428,12 +389,7 @@ export default function DocGenPage() {
                   </span>
                 )}
                 {result !== null && !isRunning && (
-                  <span
-                    className={`text-xs px-1.5 py-0.5 rounded font-medium ${
-                      PROVIDER_COLORS[selectedModel.provider] ??
-                      "bg-gray-100 text-gray-600"
-                    }`}
-                  >
+                  <span className={`text-xs px-1.5 py-0.5 rounded font-medium ${FREE_BADGE}`}>
                     {selectedModel.label}
                   </span>
                 )}
