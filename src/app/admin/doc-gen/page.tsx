@@ -58,25 +58,25 @@ export default function DocGenPage() {
   /* ── Resource loading ─────────────────────────────────────────── */
 
   const loadDriveResource = useCallback(async () => {
-    if (!driveUrl.trim()) return;
+    if (!resourceUrl.trim()) return;
     setLoadingResource(true);
     try {
       const res = await fetch("/api/admin/doc-gen/fetch-resource", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ driveUrl: driveUrl.trim() }),
+        body: JSON.stringify({ url: resourceUrl.trim() }),
       });
       const json = await res.json();
       if (!res.ok) throw new Error(json.error ?? "Fehler beim Laden");
       setResources((prev) => [...prev, json as Resource]);
-      setDriveUrl("");
+      setResourceUrl("");
       toast.success(`"${(json as Resource).name}" geladen`);
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Fehler beim Laden");
     } finally {
       setLoadingResource(false);
     }
-  }, [driveUrl]);
+  }, [resourceUrl]);
 
   const uploadFile = useCallback(async (file: File) => {
     setLoadingResource(true);
@@ -394,29 +394,29 @@ export default function DocGenPage() {
                 )}
               </div>
 
-              {/* Drive link input */}
+              {/* URL input */}
               <div>
-                <p className="text-xs font-medium text-gray-500 mb-1.5">Google Drive Link</p>
+                <p className="text-xs font-medium text-gray-500 mb-1.5">Link laden</p>
                 <div className="flex gap-2">
                   <input
                     type="text"
-                    value={driveUrl}
-                    onChange={(e) => setDriveUrl(e.target.value)}
+                    value={resourceUrl}
+                    onChange={(e) => setResourceUrl(e.target.value)}
                     onKeyDown={(e) => { if (e.key === "Enter") loadDriveResource(); }}
-                    placeholder="https://drive.google.com/..."
+                    placeholder="https://... (beliebige URL oder Google Drive)"
                     className="flex-1 min-w-0 px-3 py-2 border border-gray-300 rounded-lg text-xs focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                   />
                   <button
                     type="button"
                     onClick={loadDriveResource}
-                    disabled={!driveUrl.trim() || loadingResource}
+                    disabled={!resourceUrl.trim() || loadingResource}
                     className="shrink-0 bg-blue-600 text-white px-3 py-2 rounded-lg text-xs font-medium hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
                   >
                     {loadingResource ? "..." : "Laden"}
                   </button>
                 </div>
                 <p className="text-xs text-gray-400 mt-1">
-                  Google Docs, Sheets, DOCX, PDF — SA muss Zugriff haben
+                  Webseiten, Artikel, Google Docs/Sheets, Drive-Dateien
                 </p>
               </div>
 
