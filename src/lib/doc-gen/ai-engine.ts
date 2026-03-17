@@ -1,4 +1,3 @@
-import Anthropic from "@anthropic-ai/sdk";
 import fs from "fs/promises";
 import path from "path";
 import { getModel, DEFAULT_MODEL_ID, type AIModel } from "./models";
@@ -36,83 +35,18 @@ ${permissions}`;
 }
 
 /* ------------------------------------------------------------------ */
-/*  Provider adapters                                                   */
+/*  Provider adapter (OpenRouter only)                                 */
 /* ------------------------------------------------------------------ */
 
-/** Unified call: returns plain text response */
 async function callModel(
   model: AIModel,
-  system: string,
-  userMessage: string
-): Promise<string> {
-  switch (model.provider) {
-    case "anthropic":
-      return callAnthropic(model.id, system, userMessage);
-    case "gemini":
-      return callGemini(model.id, system, userMessage);
-    case "openrouter":
-      return callOpenRouter(model.id, system, userMessage);
-  }
-}
-
-async function callAnthropic(
-  modelId: string,
-  system: string,
-  userMessage: string
-): Promise<string> {
-  const apiKey = process.env.ANTHROPIC_API_KEY;
-  if (!apiKey) throw new Error("ANTHROPIC_API_KEY not configured");
-
-  const client = new Anthropic({ apiKey });
-  const response = await client.messages.create({
-    model: modelId,
-    max_tokens: 8192,
-    system,
-    messages: [{ role: "user", content: userMessage }],
-  });
-  return response.content[0].type === "text" ? response.content[0].text : "";
-}
-
-async function callGemini(
-  modelId: string,
-  system: string,
-  userMessage: string
-): Promise<string> {
-  const apiKey = process.env.GEMINI_API_KEY;
-  if (!apiKey) throw new Error("GEMINI_API_KEY not configured");
-
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/${modelId}:generateContent?key=${apiKey}`;
-
-  const body = {
-    system_instruction: { parts: [{ text: system }] },
-    contents: [{ role: "user", parts: [{ text: userMessage }] }],
-    generationConfig: { maxOutputTokens: 8192, temperature: 0.2 },
-  };
-
-  const res = await fetch(url, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(body),
-  });
-
-  if (!res.ok) {
-    const err = await res.text();
-    throw new Error(`Gemini API error ${res.status}: ${err}`);
-  }
-
-  const json = await res.json();
-  return json?.candidates?.[0]?.content?.parts?.[0]?.text ?? "";
-}
-
-async function callOpenRouter(
-  modelId: string,
   system: string,
   userMessage: string
 ): Promise<string> {
   const apiKey = process.env.OPENROUTER_API_KEY;
   if (!apiKey) throw new Error("OPENROUTER_API_KEY not configured");
 
-  const actualModel = modelId.replace(/^openrouter\//, "");
+  const actualModel = model.id.replace(/^openrouter\//, "");
 
   const res = await fetch("https://openrouter.ai/api/v1/chat/completions", {
     method: "POST",
@@ -139,43 +73,6 @@ async function callOpenRouter(
 
   const json = await res.json();
   return json?.choices?.[0]?.message?.content ?? "";
-}
-
-/* ------------------------------------------------------------------ */
-/*  Anthropic streaming helper (Anthropic provider only)              */
-/* ------------------------------------------------------------------ */
-
-export async function streamAnthropicMarkdown(
-  modelId: string,
-  system: string,
-  userMessage: string,
-  onChunk: (text: string) => void
-): Promise<string> {
-  const apiKey = process.env.ANTHROPIC_API_KEY;
-  if (!apiKey) throw new Error("ANTHROPIC_API_KEY not configured");
-
-  const client = new Anthropic({ apiKey });
-  let full = "";
-
-  const stream = client.messages.stream({
-    model: modelId,
-    max_tokens: 8192,
-    system,
-    messages: [{ role: "user", content: userMessage }],
-  });
-
-  for await (const event of stream) {
-    if (
-      event.type === "content_block_delta" &&
-      event.delta.type === "text_delta"
-    ) {
-      const chunk = event.delta.text;
-      full += chunk;
-      onChunk(chunk);
-    }
-  }
-
-  return full;
 }
 
 /* ------------------------------------------------------------------ */
@@ -245,9 +142,9 @@ export async function generateMarkdownDocument(
 }
 
 /**
- * Stream a Markdown document from a user prompt (Anthropic only; falls back to non-streaming for other providers).
- * onChunk is called with each text delta as it arrives.
- * Returns the full markdown string when done.
+ * Stream a Markdown document from a user prompt.
+ * All models route through OpenRouter (no native streaming).
+ * onChunk is called once with the full response.
  */
 export async function streamMarkdownDocument(
   prompt: string,
@@ -262,17 +159,6 @@ export async function streamMarkdownDocument(
   const systemPrompt = await buildSystemPrompt();
   const userMessage = buildUserMessage(prompt, existingMarkdown, resources);
 
-  if (model.provider === "anthropic") {
-    const markdown = await streamAnthropicMarkdown(
-      model.id,
-      systemPrompt,
-      userMessage,
-      onChunk
-    );
-    return { markdown };
-  }
-
-  // Non-Anthropic providers: call synchronously and emit as one chunk
   const markdown = await callModel(model, systemPrompt, userMessage);
   onChunk(markdown);
   return { markdown };
