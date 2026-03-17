@@ -41,3 +41,5 @@ next-env.d.ts
 
 # plan files
 *.plan.md
+service-account-key.json
+bash.exe.stackdump
