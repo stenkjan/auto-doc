@@ -126,8 +126,8 @@ export async function fetchDriveResource(fileId: string): Promise<DriveResource>
   // PDF — extract text via pdf-parse if available, otherwise return placeholder
   if (mimeType === "application/pdf") {
     try {
-      const pdfParse = await import("pdf-parse");
-      const data = await pdfParse.default(buffer);
+      const { default: pdfParse } = await import("pdf-parse");
+      const data = await pdfParse(buffer);
       return { name, content: data.text, type: "text" };
     } catch {
       return {
