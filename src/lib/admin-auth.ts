@@ -1,18 +1,31 @@
 import { NextRequest, NextResponse } from "next/server";
 import { cookies } from "next/headers";
+import crypto from "crypto";
 
-const COOKIE_NAME = "autodoc-admin-auth";
+export const COOKIE_NAME = "autodoc-admin-auth";
+
+function getAdminPassword(): string {
+  return (process.env.ADMIN_PASSWORD ?? "").trim();
+}
+
+function hashPassword(password: string): string {
+  return crypto.createHash("sha256").update(password).digest("hex");
+}
+
+export function createAuthToken(password: string): string {
+  return hashPassword(password.trim());
+}
 
 export async function validateAdminAuth(
   request: NextRequest
 ): Promise<boolean> {
-  const adminPassword = process.env.ADMIN_PASSWORD;
+  const adminPassword = getAdminPassword();
   if (!adminPassword) return false;
 
   const cookie = request.cookies.get(COOKIE_NAME);
   if (!cookie) return false;
 
-  return cookie.value === adminPassword;
+  return cookie.value === hashPassword(adminPassword);
 }
 
 export async function requireAdminAuth(
@@ -29,14 +42,12 @@ export async function requireAdminAuth(
 }
 
 export async function validateAdminAuthFromCookies(): Promise<boolean> {
-  const adminPassword = process.env.ADMIN_PASSWORD;
+  const adminPassword = getAdminPassword();
   if (!adminPassword) return false;
 
   const cookieStore = await cookies();
   const cookie = cookieStore.get(COOKIE_NAME);
   if (!cookie) return false;
 
-  return cookie.value === adminPassword;
+  return cookie.value === hashPassword(adminPassword);
 }
-
-export { COOKIE_NAME };
