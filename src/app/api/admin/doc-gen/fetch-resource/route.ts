@@ -1,0 +1,98 @@
+import { NextRequest, NextResponse } from "next/server";
+import { requireAdminAuth } from "@/lib/admin-auth";
+import {
+  extractDriveFileId,
+  fetchDriveResource,
+} from "@/lib/doc-gen/drive-output";
+import mammoth from "mammoth";
+
+export async function POST(request: NextRequest) {
+  const authError = await requireAdminAuth(request);
+  if (authError) return authError;
+
+  const contentType = request.headers.get("content-type") ?? "";
+
+  // ── Drive URL ──────────────────────────────────────────────────────
+  if (contentType.includes("application/json")) {
+    const { driveUrl } = await request.json();
+    if (!driveUrl) {
+      return NextResponse.json({ error: "driveUrl is required" }, { status: 400 });
+    }
+
+    const fileId = extractDriveFileId(driveUrl);
+    if (!fileId) {
+      return NextResponse.json(
+        { error: "Ungültige Google Drive URL" },
+        { status: 400 }
+      );
+    }
+
+    try {
+      const resource = await fetchDriveResource(fileId);
+      return NextResponse.json(resource);
+    } catch (err) {
+      return NextResponse.json(
+        { error: err instanceof Error ? err.message : "Fehler beim Laden der Datei" },
+        { status: 500 }
+      );
+    }
+  }
+
+  // ── File upload (multipart/form-data) ─────────────────────────────
+  if (contentType.includes("multipart/form-data")) {
+    const formData = await request.formData();
+    const file = formData.get("file") as File | null;
+
+    if (!file) {
+      return NextResponse.json({ error: "Keine Datei empfangen" }, { status: 400 });
+    }
+
+    const name = file.name;
+    const mime = file.type;
+    const buffer = Buffer.from(await file.arrayBuffer());
+
+    try {
+      let content = "";
+
+      if (
+        mime === "application/vnd.openxmlformats-officedocument.wordprocessingml.document" ||
+        name.endsWith(".docx")
+      ) {
+        const result = await mammoth.extractRawText({ buffer });
+        content = result.value;
+      } else if (mime === "application/pdf" || name.endsWith(".pdf")) {
+        try {
+          const pdfParse = await import("pdf-parse");
+          const data = await pdfParse.default(buffer);
+          content = data.text;
+        } catch {
+          content = `[PDF-Datei: ${name} – Textextraktion nicht verfügbar]`;
+        }
+      } else if (
+        mime.startsWith("text/") ||
+        name.endsWith(".txt") ||
+        name.endsWith(".md") ||
+        name.endsWith(".csv") ||
+        name.endsWith(".json")
+      ) {
+        content = buffer.toString("utf-8");
+      } else {
+        return NextResponse.json(
+          {
+            error: `Dateityp "${mime || name}" wird nicht unterstützt. Erlaubt: PDF, DOCX, TXT, MD, CSV, JSON.`,
+          },
+          { status: 400 }
+        );
+      }
+
+      return NextResponse.json({ name, content, type: "text" });
+    } catch (err) {
+      return NextResponse.json(
+        { error: err instanceof Error ? err.message : "Fehler beim Verarbeiten der Datei" },
+        { status: 500 }
+      );
+    }
+  }
+
+  return NextResponse.json({ error: "Ungültiger Content-Type" }, { status: 400 });
+}

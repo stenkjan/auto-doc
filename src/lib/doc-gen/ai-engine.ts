@@ -179,32 +179,66 @@ export async function streamAnthropicMarkdown(
 }
 
 /* ------------------------------------------------------------------ */
+/*  Public types                                                        */
+/* ------------------------------------------------------------------ */
+
+export interface Resource {
+  name: string;
+  content: string;
+  type: "text";
+}
+
+/* ------------------------------------------------------------------ */
+/*  Resource injection helper                                           */
+/* ------------------------------------------------------------------ */
+
+function buildUserMessage(
+  prompt: string,
+  existingMarkdown?: string,
+  resources?: Resource[]
+): string {
+  const parts: string[] = [];
+
+  if (resources && resources.length > 0) {
+    parts.push("## Referenzdokumente\n");
+    for (const r of resources) {
+      parts.push(`### ${r.name}\n\`\`\`\n${r.content.slice(0, 40000)}\n\`\`\``);
+    }
+    parts.push("");
+  }
+
+  if (existingMarkdown) {
+    parts.push(
+      `## Aktuelles Dokument (bitte entsprechend dem neuen Prompt anpassen)\n\`\`\`markdown\n${existingMarkdown}\n\`\`\``
+    );
+    parts.push("");
+  }
+
+  parts.push(`## Aufgabe\n${prompt}`);
+
+  return parts.join("\n");
+}
+
+/* ------------------------------------------------------------------ */
 /*  Public functions                                                    */
 /* ------------------------------------------------------------------ */
 
 /**
  * Generate a Markdown document from a user prompt.
  * Optionally pass existingMarkdown to have Claude refine/edit it.
+ * Optionally pass resources[] to inject reference documents into context.
  */
 export async function generateMarkdownDocument(
   prompt: string,
   modelId: string = DEFAULT_MODEL_ID,
-  existingMarkdown?: string
+  existingMarkdown?: string,
+  resources?: Resource[]
 ): Promise<{ markdown: string }> {
   const model = getModel(modelId);
   if (!model) throw new Error(`Unknown model: ${modelId}`);
 
   const systemPrompt = await buildSystemPrompt();
-
-  const userMessage = existingMarkdown
-    ? `Aktuelles Dokument (bitte entsprechend dem neuen Prompt anpassen):
-
-\`\`\`markdown
-${existingMarkdown}
-\`\`\`
-
-Neuer Prompt: ${prompt}`
-    : prompt;
+  const userMessage = buildUserMessage(prompt, existingMarkdown, resources);
 
   const markdown = await callModel(model, systemPrompt, userMessage);
   return { markdown };
@@ -219,22 +253,14 @@ export async function streamMarkdownDocument(
   prompt: string,
   modelId: string = DEFAULT_MODEL_ID,
   onChunk: (text: string) => void,
-  existingMarkdown?: string
+  existingMarkdown?: string,
+  resources?: Resource[]
 ): Promise<{ markdown: string }> {
   const model = getModel(modelId);
   if (!model) throw new Error(`Unknown model: ${modelId}`);
 
   const systemPrompt = await buildSystemPrompt();
-
-  const userMessage = existingMarkdown
-    ? `Aktuelles Dokument (bitte entsprechend dem neuen Prompt anpassen):
-
-\`\`\`markdown
-${existingMarkdown}
-\`\`\`
-
-Neuer Prompt: ${prompt}`
-    : prompt;
+  const userMessage = buildUserMessage(prompt, existingMarkdown, resources);
 
   if (model.provider === "anthropic") {
     const markdown = await streamAnthropicMarkdown(

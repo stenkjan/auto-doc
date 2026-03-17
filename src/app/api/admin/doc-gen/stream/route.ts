@@ -1,14 +1,23 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireAdminAuth } from "@/lib/admin-auth";
-import { streamMarkdownDocument } from "@/lib/doc-gen/ai-engine";
+import { streamMarkdownDocument, type Resource } from "@/lib/doc-gen/ai-engine";
 import { DEFAULT_MODEL_ID } from "@/lib/doc-gen/models";
 
 export async function POST(request: NextRequest) {
   const authError = await requireAdminAuth(request);
   if (authError) return authError;
 
-  const { prompt, modelId = DEFAULT_MODEL_ID, existingMarkdown } =
-    await request.json();
+  const {
+    prompt,
+    modelId = DEFAULT_MODEL_ID,
+    existingMarkdown,
+    resources,
+  } = await request.json() as {
+    prompt?: string;
+    modelId?: string;
+    existingMarkdown?: string;
+    resources?: Resource[];
+  };
 
   if (!prompt) {
     return NextResponse.json(
@@ -27,25 +36,27 @@ export async function POST(request: NextRequest) {
       };
 
       try {
-        send("status", { message: "Generiere Dokument..." });
-
-        let fullMarkdown = "";
+        const resourceCount = resources?.length ?? 0;
+        send("status", {
+          message: resourceCount > 0
+            ? `Generiere Dokument mit ${resourceCount} Referenz${resourceCount === 1 ? "" : "en"}...`
+            : "Generiere Dokument...",
+        });
 
         const { markdown } = await streamMarkdownDocument(
           prompt,
           modelId,
           (chunk) => {
-            fullMarkdown += chunk;
             send("chunk", { text: chunk });
           },
-          existingMarkdown
+          existingMarkdown,
+          resources
         );
 
         send("complete", { markdown });
       } catch (error) {
         send("error", {
-          message:
-            error instanceof Error ? error.message : "Unknown error",
+          message: error instanceof Error ? error.message : "Unknown error",
         });
       } finally {
         controller.close();
