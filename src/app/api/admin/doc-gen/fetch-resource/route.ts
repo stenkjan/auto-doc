@@ -124,8 +124,9 @@ export async function POST(request: NextRequest) {
         content = result.value;
       } else if (mime === "application/pdf" || name.endsWith(".pdf")) {
         try {
-          const { default: pdfParse } = await import("pdf-parse");
-          const data = await pdfParse(buffer);
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          const pdfParse = (await import("pdf-parse")) as any;
+          const data = await (pdfParse.default ?? pdfParse)(buffer);
           content = data.text;
         } catch {
           content = `[PDF-Datei: ${name} – Textextraktion nicht verfügbar]`;
