@@ -127,14 +127,19 @@ export async function POST(request: NextRequest) {
       } else if (mime === "application/pdf" || name.endsWith(".pdf")) {
         let pdfWarning: string | undefined;
         try {
-          const { getDocument } = await import("pdfjs-dist/legacy/build/pdf.mjs") as typeof import("pdfjs-dist");
+          const pdfjs = await import("pdfjs-dist/legacy/build/pdf.mjs") as typeof import("pdfjs-dist");
+          
+          // Disable worker for server-side usage
+          pdfjs.GlobalWorkerOptions.workerSrc = "";
+          
           const uint8 = new Uint8Array(buffer.buffer, buffer.byteOffset, buffer.byteLength);
-          const doc = await getDocument({
+          const doc = await pdfjs.getDocument({
             data: uint8,
             useWorkerFetch: false,
             isEvalSupported: false,
             useSystemFonts: true,
             disableAutoFetch: true,
+            standardFontDataUrl: undefined,
           }).promise;
 
           const pageTexts: string[] = [];
