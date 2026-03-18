@@ -1,10 +1,7 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { getModel, DEFAULT_MODEL_ID, type AIModel } from "./models";
-import {
-  resolveContext,
-  loadContextContent,
-  DEFAULT_CONTEXT_ID,
-} from "./context-registry.server";
+import { DEFAULT_CONTEXT_ID } from "./context-registry";
+import { resolveContext, loadContextContent } from "./context-registry.server";
 
 /* ------------------------------------------------------------------ */
 /*  Rules & context loading                                             */
