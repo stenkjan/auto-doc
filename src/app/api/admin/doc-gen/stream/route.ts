@@ -4,6 +4,14 @@ import { streamMarkdownDocument, type Resource } from "@/lib/doc-gen/ai-engine";
 import { DEFAULT_MODEL_ID } from "@/lib/doc-gen/models";
 import { DEFAULT_CONTEXT_ID } from "@/lib/doc-gen/context-registry";
 
+export const maxDuration = 120;
+export const dynamic = "force-dynamic";
+export const fetchCache = "force-no-store";
+
+// Increase body size limit for route handler (Next.js 15.2+)
+// This allows large PDF text payloads in the resources array
+export const bodyLimit = "20mb";
+
 export async function POST(request: NextRequest) {
   const authError = await requireAdminAuth(request);
   if (authError) return authError;

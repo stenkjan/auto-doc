@@ -6,6 +6,8 @@ import {
 } from "@/lib/doc-gen/drive-output";
 import mammoth from "mammoth";
 
+export const bodyLimit = "20mb";
+
 function isDriveUrl(url: string): boolean {
   return (
     url.includes("drive.google.com") ||
