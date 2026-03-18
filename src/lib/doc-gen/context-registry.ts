@@ -3,9 +3,10 @@ export interface AIContext {
   label: string;
   description: string;
   filePath: string;
+  custom?: boolean;
 }
 
-export const AI_CONTEXTS: AIContext[] = [
+export const BUILTIN_CONTEXTS: AIContext[] = [
   {
     id: "general",
     label: "Allgemein",
@@ -26,8 +27,10 @@ export const AI_CONTEXTS: AIContext[] = [
   },
 ];
 
+export const AI_CONTEXTS = BUILTIN_CONTEXTS;
+
 export const DEFAULT_CONTEXT_ID = "general";
 
 export function getContext(id: string): AIContext | undefined {
-  return AI_CONTEXTS.find((c) => c.id === id);
+  return BUILTIN_CONTEXTS.find((c) => c.id === id);
 }

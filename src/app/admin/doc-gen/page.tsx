@@ -5,7 +5,7 @@ import dynamic from "next/dynamic";
 import remarkGfm from "remark-gfm";
 import toast from "react-hot-toast";
 import { AI_MODELS, DEFAULT_MODEL_ID } from "@/lib/doc-gen/models";
-import { AI_CONTEXTS, DEFAULT_CONTEXT_ID } from "@/lib/doc-gen/context-registry";
+import { BUILTIN_CONTEXTS, DEFAULT_CONTEXT_ID } from "@/lib/doc-gen/context-registry";
 import type { Resource } from "@/lib/doc-gen/ai-engine";
 
 const ReactMarkdown = dynamic(() => import("react-markdown"), { ssr: false });
@@ -17,8 +17,327 @@ interface GenerationResult {
   title?: string;
 }
 
+interface ContextEntry {
+  id: string;
+  label: string;
+  description: string;
+  content?: string;
+  custom?: boolean;
+}
+
 const FREE_BADGE = "bg-green-100 text-green-700";
 const PAID_BADGE = "bg-amber-100 text-amber-700";
+
+/* ------------------------------------------------------------------ */
+/*  Context Manager Modal                                               */
+/* ------------------------------------------------------------------ */
+
+function ContextManagerModal({
+  onClose,
+  onContextsChanged,
+}: {
+  onClose: () => void;
+  onContextsChanged: () => void;
+}) {
+  const [customContexts, setCustomContexts] = useState<ContextEntry[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editLabel, setEditLabel] = useState("");
+  const [editContent, setEditContent] = useState("");
+  const [isCreating, setIsCreating] = useState(false);
+  const [newLabel, setNewLabel] = useState("");
+  const [newDescription, setNewDescription] = useState("");
+  const [newContent, setNewContent] = useState("");
+  const [saving, setSaving] = useState(false);
+
+  const fetchCustomContexts = useCallback(async () => {
+    setLoading(true);
+    try {
+      const res = await fetch("/api/admin/doc-gen/contexts");
+      const json = await res.json();
+      setCustomContexts(json.contexts ?? []);
+    } catch {
+      toast.error("Fehler beim Laden der Kontexte");
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchCustomContexts();
+  }, [fetchCustomContexts]);
+
+  const startEdit = useCallback((ctx: ContextEntry) => {
+    setEditingId(ctx.id);
+    setEditLabel(ctx.label);
+    setEditContent(ctx.content ?? "");
+    setIsCreating(false);
+  }, []);
+
+  const cancelEdit = useCallback(() => {
+    setEditingId(null);
+    setEditLabel("");
+    setEditContent("");
+  }, []);
+
+  const saveEdit = useCallback(async () => {
+    if (!editingId || !editContent.trim()) return;
+    setSaving(true);
+    try {
+      const res = await fetch("/api/admin/doc-gen/contexts", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: editingId, label: editLabel, content: editContent }),
+      });
+      if (!res.ok) {
+        const j = await res.json();
+        throw new Error(j.error ?? "Fehler beim Speichern");
+      }
+      toast.success("Kontext gespeichert");
+      cancelEdit();
+      await fetchCustomContexts();
+      onContextsChanged();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Fehler");
+    } finally {
+      setSaving(false);
+    }
+  }, [editingId, editLabel, editContent, cancelEdit, fetchCustomContexts, onContextsChanged]);
+
+  const deleteContext = useCallback(async (id: string, label: string) => {
+    if (!confirm(`Kontext "${label}" wirklich löschen?`)) return;
+    try {
+      const res = await fetch("/api/admin/doc-gen/contexts", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id }),
+      });
+      if (!res.ok) {
+        const j = await res.json();
+        throw new Error(j.error ?? "Fehler beim Löschen");
+      }
+      toast.success(`"${label}" gelöscht`);
+      await fetchCustomContexts();
+      onContextsChanged();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Fehler");
+    }
+  }, [fetchCustomContexts, onContextsChanged]);
+
+  const createContext = useCallback(async () => {
+    if (!newLabel.trim() || !newContent.trim()) {
+      toast.error("Name und Inhalt sind erforderlich");
+      return;
+    }
+    setSaving(true);
+    try {
+      const res = await fetch("/api/admin/doc-gen/contexts", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ label: newLabel, description: newDescription, content: newContent }),
+      });
+      if (!res.ok) {
+        const j = await res.json();
+        throw new Error(j.error ?? "Fehler beim Erstellen");
+      }
+      toast.success(`"${newLabel}" erstellt`);
+      setIsCreating(false);
+      setNewLabel("");
+      setNewDescription("");
+      setNewContent("");
+      await fetchCustomContexts();
+      onContextsChanged();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Fehler");
+    } finally {
+      setSaving(false);
+    }
+  }, [newLabel, newDescription, newContent, fetchCustomContexts, onContextsChanged]);
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4">
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[90vh] flex flex-col">
+        {/* Header */}
+        <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200">
+          <div>
+            <h2 className="text-base font-semibold text-gray-900">Kontexte verwalten</h2>
+            <p className="text-xs text-gray-500 mt-0.5">Eigene Kontext-Definitionen als .md hinzufügen, bearbeiten oder löschen</p>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            className="text-gray-400 hover:text-gray-600 transition-colors p-1"
+          >
+            <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </button>
+        </div>
+
+        <div className="flex-1 overflow-y-auto px-6 py-4 space-y-4">
+          {/* Built-in contexts (read-only display) */}
+          <div>
+            <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-2">Eingebaut (schreibgeschützt)</p>
+            <div className="space-y-1.5">
+              {BUILTIN_CONTEXTS.map((ctx) => (
+                <div key={ctx.id} className="flex items-center gap-3 px-3 py-2.5 bg-gray-50 border border-gray-200 rounded-lg">
+                  <div className="flex-1 min-w-0">
+                    <span className="text-sm font-medium text-gray-700">{ctx.label}</span>
+                    <p className="text-xs text-gray-400 mt-0.5 truncate">{ctx.description}</p>
+                  </div>
+                  <span className="text-xs text-gray-300 shrink-0">Eingebaut</span>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Custom contexts */}
+          <div>
+            <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-2">Eigene Kontexte</p>
+
+            {loading ? (
+              <p className="text-xs text-gray-400 py-2">Lädt...</p>
+            ) : customContexts.length === 0 && !isCreating ? (
+              <p className="text-xs text-gray-400 py-2">Noch keine eigenen Kontexte vorhanden.</p>
+            ) : (
+              <div className="space-y-2">
+                {customContexts.map((ctx) => (
+                  <div key={ctx.id} className="border border-gray-200 rounded-lg overflow-hidden">
+                    {editingId === ctx.id ? (
+                      <div className="p-3 space-y-2 bg-blue-50">
+                        <input
+                          type="text"
+                          value={editLabel}
+                          onChange={(e) => setEditLabel(e.target.value)}
+                          className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                          placeholder="Name des Kontexts"
+                        />
+                        <textarea
+                          value={editContent}
+                          onChange={(e) => setEditContent(e.target.value)}
+                          rows={10}
+                          className="w-full px-3 py-2 border border-gray-300 rounded-lg text-xs font-mono resize-y focus:outline-none focus:ring-2 focus:ring-blue-500"
+                          placeholder="Markdown-Inhalt des Kontexts..."
+                        />
+                        <div className="flex gap-2 justify-end">
+                          <button
+                            type="button"
+                            onClick={cancelEdit}
+                            className="text-xs px-3 py-1.5 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
+                          >
+                            Abbrechen
+                          </button>
+                          <button
+                            type="button"
+                            onClick={saveEdit}
+                            disabled={saving}
+                            className="text-xs px-3 py-1.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 transition-colors"
+                          >
+                            {saving ? "Speichert..." : "Speichern"}
+                          </button>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="flex items-center gap-3 px-3 py-2.5">
+                        <div className="flex-1 min-w-0">
+                          <span className="text-sm font-medium text-gray-800">{ctx.label}</span>
+                          <p className="text-xs text-gray-400 mt-0.5 truncate">{ctx.description}</p>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => startEdit(ctx)}
+                          className="text-xs text-blue-600 hover:text-blue-800 shrink-0 transition-colors"
+                        >
+                          Bearbeiten
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => deleteContext(ctx.id, ctx.label)}
+                          className="text-xs text-gray-400 hover:text-red-500 shrink-0 transition-colors"
+                        >
+                          Löschen
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* Create new context form */}
+          {isCreating && (
+            <div className="border border-blue-200 rounded-lg p-4 bg-blue-50 space-y-2">
+              <p className="text-xs font-semibold text-blue-700 mb-2">Neuer Kontext</p>
+              <input
+                type="text"
+                value={newLabel}
+                onChange={(e) => setNewLabel(e.target.value)}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                placeholder="Name (z.B. Mietvertrag, Protokoll, ...)"
+                autoFocus
+              />
+              <input
+                type="text"
+                value={newDescription}
+                onChange={(e) => setNewDescription(e.target.value)}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                placeholder="Kurzbeschreibung (optional)"
+              />
+              <textarea
+                value={newContent}
+                onChange={(e) => setNewContent(e.target.value)}
+                rows={10}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-xs font-mono resize-y focus:outline-none focus:ring-2 focus:ring-blue-500"
+                placeholder={`Beschreibe dem AI-Assistenten hier seinen Kontext, z.B.:\n\nDu bist ein Assistent für Mietvertragsanalyse...\n\n## Aufgabenbereich\n- ...\n\n## Qualität\n- ...`}
+              />
+              <div className="flex gap-2 justify-end">
+                <button
+                  type="button"
+                  onClick={() => { setIsCreating(false); setNewLabel(""); setNewDescription(""); setNewContent(""); }}
+                  className="text-xs px-3 py-1.5 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
+                >
+                  Abbrechen
+                </button>
+                <button
+                  type="button"
+                  onClick={createContext}
+                  disabled={saving}
+                  className="text-xs px-3 py-1.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 transition-colors"
+                >
+                  {saving ? "Erstellt..." : "Erstellen"}
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* Footer */}
+        <div className="px-6 py-4 border-t border-gray-200 flex items-center justify-between">
+          <button
+            type="button"
+            onClick={() => { setIsCreating(true); setEditingId(null); }}
+            disabled={isCreating}
+            className="text-sm px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 transition-colors font-medium"
+          >
+            + Neuer Kontext
+          </button>
+          <button
+            type="button"
+            onClick={onClose}
+            className="text-sm px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
+          >
+            Schließen
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/*  Main Page                                                           */
+/* ------------------------------------------------------------------ */
 
 export default function DocGenPage() {
   const [prompt, setPrompt] = useState("");
@@ -28,11 +347,12 @@ export default function DocGenPage() {
   const [streamingMarkdown, setStreamingMarkdown] = useState("");
   const [selectedModelId, setSelectedModelId] = useState(DEFAULT_MODEL_ID);
   const [showModelPicker, setShowModelPicker] = useState(false);
+  const [allContexts, setAllContexts] = useState<ContextEntry[]>(BUILTIN_CONTEXTS);
   const [selectedContextId, setSelectedContextId] = useState(DEFAULT_CONTEXT_ID);
   const [showContextPicker, setShowContextPicker] = useState(false);
+  const [showContextManager, setShowContextManager] = useState(false);
   const [isEditMode, setIsEditMode] = useState(false);
 
-  // Resources state
   const [resources, setResources] = useState<(Resource & { warning?: string })[]>([]);
   const [resourceUrl, setResourceUrl] = useState("");
   const [loadingResource, setLoadingResource] = useState(false);
@@ -45,7 +365,22 @@ export default function DocGenPage() {
   const dropZoneRef = useRef<HTMLDivElement>(null);
 
   const selectedModel = AI_MODELS.find((m) => m.id === selectedModelId) ?? AI_MODELS[0];
-  const selectedContext = AI_CONTEXTS.find((c) => c.id === selectedContextId) ?? AI_CONTEXTS[0];
+  const selectedContext = allContexts.find((c) => c.id === selectedContextId) ?? allContexts[0];
+
+  const refreshContexts = useCallback(async () => {
+    try {
+      const res = await fetch("/api/admin/doc-gen/contexts");
+      const json = await res.json();
+      const custom: ContextEntry[] = json.contexts ?? [];
+      setAllContexts([...BUILTIN_CONTEXTS, ...custom]);
+    } catch {
+      // keep built-ins
+    }
+  }, []);
+
+  useEffect(() => {
+    refreshContexts();
+  }, [refreshContexts]);
 
   useEffect(() => {
     function handleClickOutside(e: MouseEvent) {
@@ -245,9 +580,7 @@ export default function DocGenPage() {
         .save();
       toast.success("PDF wird heruntergeladen...");
     } catch (err) {
-      toast.error(
-        err instanceof Error ? err.message : "PDF-Erzeugung fehlgeschlagen"
-      );
+      toast.error(err instanceof Error ? err.message : "PDF-Erzeugung fehlgeschlagen");
     }
   }, [result]);
 
@@ -256,16 +589,20 @@ export default function DocGenPage() {
 
   return (
     <div className="min-h-screen bg-gray-50">
+      {/* Context Manager Modal */}
+      {showContextManager && (
+        <ContextManagerModal
+          onClose={() => setShowContextManager(false)}
+          onContextsChanged={refreshContexts}
+        />
+      )}
+
       {/* Header */}
       <header className="bg-white border-b border-gray-200 px-6 py-4">
         <div className="max-w-7xl mx-auto flex items-center justify-between">
           <div>
-            <h1 className="text-xl font-bold text-gray-900">
-              Dokumentengenerator
-            </h1>
-            <p className="text-sm text-gray-500">
-              AI-gestützte Dokumentenerstellung
-            </p>
+            <h1 className="text-xl font-bold text-gray-900">Dokumentengenerator</h1>
+            <p className="text-sm text-gray-500">AI-gestützte Dokumentenerstellung</p>
           </div>
           <span
             className={`text-xs px-2 py-1 rounded-full font-medium ${
@@ -278,13 +615,7 @@ export default function DocGenPage() {
                     : "bg-gray-100 text-gray-500"
             }`}
           >
-            {status === "idle"
-              ? "Bereit"
-              : status === "done"
-                ? "Fertig"
-                : status === "error"
-                  ? "Fehler"
-                  : "Läuft..."}
+            {status === "idle" ? "Bereit" : status === "done" ? "Fertig" : status === "error" ? "Fehler" : "Läuft..."}
           </span>
         </div>
       </header>
@@ -302,9 +633,7 @@ export default function DocGenPage() {
 
               {isEditMode && (
                 <div className="flex items-center gap-2 px-3 py-2 bg-amber-50 border border-amber-200 rounded-lg">
-                  <span className="text-xs text-amber-700 font-medium">
-                    Bearbeitungsmodus aktiv
-                  </span>
+                  <span className="text-xs text-amber-700 font-medium">Bearbeitungsmodus aktiv</span>
                   <button
                     type="button"
                     onClick={() => setIsEditMode(false)}
@@ -317,18 +646,34 @@ export default function DocGenPage() {
 
               {/* Context picker */}
               <div className="relative" ref={contextPickerRef}>
-                <p className="text-xs font-medium text-gray-500 mb-1.5">Kontext</p>
+                <div className="flex items-center justify-between mb-1.5">
+                  <p className="text-xs font-medium text-gray-500">Kontext</p>
+                  <button
+                    type="button"
+                    onClick={() => setShowContextManager(true)}
+                    className="text-xs text-blue-600 hover:text-blue-800 transition-colors"
+                  >
+                    Verwalten
+                  </button>
+                </div>
                 <button
                   type="button"
                   onClick={() => setShowContextPicker((v) => !v)}
                   className="w-full flex items-center justify-between gap-2 border border-gray-300 rounded-lg px-3 py-2.5 text-left hover:border-gray-400 transition-colors bg-white"
                 >
                   <div className="min-w-0">
-                    <span className="text-sm font-medium text-gray-900 truncate block">
-                      {selectedContext.label}
-                    </span>
+                    <div className="flex items-center gap-2">
+                      {selectedContext?.custom && (
+                        <span className="text-xs px-1.5 py-0.5 rounded font-medium bg-purple-100 text-purple-700 shrink-0">
+                          Eigens
+                        </span>
+                      )}
+                      <span className="text-sm font-medium text-gray-900 truncate">
+                        {selectedContext?.label ?? "Allgemein"}
+                      </span>
+                    </div>
                     <p className="text-xs text-gray-400 mt-0.5 truncate">
-                      {selectedContext.description}
+                      {selectedContext?.description ?? ""}
                     </p>
                   </div>
                   <svg
@@ -340,21 +685,56 @@ export default function DocGenPage() {
                 </button>
 
                 {showContextPicker && (
-                  <div className="absolute z-50 left-0 right-0 top-full mt-1 bg-white border border-gray-200 rounded-xl shadow-lg overflow-hidden">
-                    {AI_CONTEXTS.map((ctx) => (
-                      <button
-                        key={ctx.id}
-                        type="button"
-                        onClick={() => { setSelectedContextId(ctx.id); setShowContextPicker(false); }}
-                        className={`w-full text-left px-3 py-2.5 hover:bg-gray-50 transition-colors border-b border-gray-100 last:border-0 ${selectedContextId === ctx.id ? "bg-blue-50" : ""}`}
-                      >
-                        <span className="text-sm font-medium text-gray-900 block">{ctx.label}</span>
-                        <p className="text-xs text-gray-400 mt-0.5">{ctx.description}</p>
-                        {selectedContextId === ctx.id && (
-                          <span className="text-xs text-blue-600 font-medium">Ausgewählt</span>
+                  <div className="absolute z-40 left-0 right-0 top-full mt-1 bg-white border border-gray-200 rounded-xl shadow-lg overflow-hidden max-h-72 overflow-y-auto">
+                    {allContexts.length === 0 ? (
+                      <p className="text-xs text-gray-400 px-3 py-3">Keine Kontexte verfügbar</p>
+                    ) : (
+                      <>
+                        {/* Built-in */}
+                        <div className="px-3 py-1.5 bg-gray-50 border-b border-gray-100">
+                          <span className="text-xs font-semibold text-gray-400 uppercase tracking-wide">Eingebaut</span>
+                        </div>
+                        {allContexts.filter((c) => !c.custom).map((ctx) => (
+                          <button
+                            key={ctx.id}
+                            type="button"
+                            onClick={() => { setSelectedContextId(ctx.id); setShowContextPicker(false); }}
+                            className={`w-full text-left px-3 py-2.5 hover:bg-gray-50 transition-colors border-b border-gray-100 last:border-0 ${selectedContextId === ctx.id ? "bg-blue-50" : ""}`}
+                          >
+                            <span className="text-sm font-medium text-gray-900 block">{ctx.label}</span>
+                            <p className="text-xs text-gray-400 mt-0.5">{ctx.description}</p>
+                            {selectedContextId === ctx.id && (
+                              <span className="text-xs text-blue-600 font-medium">Ausgewählt</span>
+                            )}
+                          </button>
+                        ))}
+                        {/* Custom */}
+                        {allContexts.some((c) => c.custom) && (
+                          <>
+                            <div className="px-3 py-1.5 bg-gray-50 border-b border-gray-100 border-t border-gray-200">
+                              <span className="text-xs font-semibold text-gray-400 uppercase tracking-wide">Eigene</span>
+                            </div>
+                            {allContexts.filter((c) => c.custom).map((ctx) => (
+                              <button
+                                key={ctx.id}
+                                type="button"
+                                onClick={() => { setSelectedContextId(ctx.id); setShowContextPicker(false); }}
+                                className={`w-full text-left px-3 py-2.5 hover:bg-gray-50 transition-colors border-b border-gray-100 last:border-0 ${selectedContextId === ctx.id ? "bg-blue-50" : ""}`}
+                              >
+                                <div className="flex items-center gap-2">
+                                  <span className="text-xs px-1.5 py-0.5 rounded font-medium bg-purple-100 text-purple-700 shrink-0">Eigens</span>
+                                  <span className="text-sm font-medium text-gray-900">{ctx.label}</span>
+                                </div>
+                                <p className="text-xs text-gray-400 mt-0.5">{ctx.description}</p>
+                                {selectedContextId === ctx.id && (
+                                  <span className="text-xs text-blue-600 font-medium">Ausgewählt</span>
+                                )}
+                              </button>
+                            ))}
+                          </>
                         )}
-                      </button>
-                    ))}
+                      </>
+                    )}
                   </div>
                 )}
               </div>
@@ -363,8 +743,7 @@ export default function DocGenPage() {
                 value={prompt}
                 onChange={(e) => setPrompt(e.target.value)}
                 onKeyDown={(e) => {
-                  if (e.key === "Enter" && (e.metaKey || e.ctrlKey))
-                    generate();
+                  if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) generate();
                 }}
                 placeholder={
                   isEditMode
@@ -395,9 +774,7 @@ export default function DocGenPage() {
                         {selectedModel.label}
                       </span>
                     </div>
-                    <p className="text-xs text-gray-400 mt-0.5 truncate">
-                      {selectedModel.description}
-                    </p>
+                    <p className="text-xs text-gray-400 mt-0.5 truncate">{selectedModel.description}</p>
                   </div>
                   <svg
                     className={`w-4 h-4 text-gray-400 shrink-0 transition-transform ${showModelPicker ? "rotate-180" : ""}`}
@@ -408,8 +785,7 @@ export default function DocGenPage() {
                 </button>
 
                 {showModelPicker && (
-                  <div className="absolute z-50 left-0 right-0 top-full mt-1 bg-white border border-gray-200 rounded-xl shadow-lg overflow-hidden max-h-80 overflow-y-auto">
-                    {/* Free models */}
+                  <div className="absolute z-40 left-0 right-0 top-full mt-1 bg-white border border-gray-200 rounded-xl shadow-lg overflow-hidden max-h-80 overflow-y-auto">
                     <div className="px-3 py-1.5 bg-gray-50 border-b border-gray-100">
                       <span className="text-xs font-semibold text-gray-400 uppercase tracking-wide">Kostenlos</span>
                     </div>
@@ -425,12 +801,9 @@ export default function DocGenPage() {
                           <span className="text-xs text-gray-400 shrink-0">{model.contextWindow} ctx</span>
                         </div>
                         <p className="text-xs text-gray-400 mt-0.5">{model.description}</p>
-                        {selectedModelId === model.id && (
-                          <span className="text-xs text-blue-600 font-medium">Ausgewählt</span>
-                        )}
+                        {selectedModelId === model.id && <span className="text-xs text-blue-600 font-medium">Ausgewählt</span>}
                       </button>
                     ))}
-                    {/* Paid models */}
                     <div className="px-3 py-1.5 bg-gray-50 border-b border-gray-100 border-t border-gray-200">
                       <span className="text-xs font-semibold text-gray-400 uppercase tracking-wide">Bezahlt (bessere Qualität)</span>
                     </div>
@@ -446,16 +819,13 @@ export default function DocGenPage() {
                           <span className="text-xs text-gray-400 shrink-0">{model.contextWindow} ctx</span>
                         </div>
                         <p className="text-xs text-gray-400 mt-0.5">{model.description}</p>
-                        {selectedModelId === model.id && (
-                          <span className="text-xs text-blue-600 font-medium">Ausgewählt</span>
-                        )}
+                        {selectedModelId === model.id && <span className="text-xs text-blue-600 font-medium">Ausgewählt</span>}
                       </button>
                     ))}
                   </div>
                 )}
               </div>
 
-              {/* Generate button */}
               <button
                 onClick={generate}
                 disabled={isRunning}
@@ -483,7 +853,6 @@ export default function DocGenPage() {
                 )}
               </div>
 
-              {/* URL input */}
               <div>
                 <p className="text-xs font-medium text-gray-500 mb-1.5">Link laden</p>
                 <div className="flex gap-2">
@@ -504,12 +873,9 @@ export default function DocGenPage() {
                     {loadingResource ? "..." : "Laden"}
                   </button>
                 </div>
-                <p className="text-xs text-gray-400 mt-1">
-                  Webseiten, Artikel, Google Docs/Sheets, Drive-Dateien
-                </p>
+                <p className="text-xs text-gray-400 mt-1">Webseiten, Artikel, Google Docs/Sheets, Drive-Dateien</p>
               </div>
 
-              {/* File drop zone */}
               <div>
                 <p className="text-xs font-medium text-gray-500 mb-1.5">Datei hochladen</p>
                 <div
@@ -519,24 +885,16 @@ export default function DocGenPage() {
                   onDrop={handleDrop}
                   onClick={() => fileInputRef.current?.click()}
                   className={`border-2 border-dashed rounded-lg px-4 py-5 text-center cursor-pointer transition-colors ${
-                    isDragging
-                      ? "border-blue-400 bg-blue-50"
-                      : "border-gray-200 hover:border-gray-300 hover:bg-gray-50"
+                    isDragging ? "border-blue-400 bg-blue-50" : "border-gray-200 hover:border-gray-300 hover:bg-gray-50"
                   }`}
                 >
                   {loadingResource ? (
                     <p className="text-xs text-blue-600">Wird verarbeitet...</p>
                   ) : (
                     <>
-                      <p className="text-xs font-medium text-gray-600">
-                        Datei hierher ziehen
-                      </p>
-                      <p className="text-xs text-gray-400 mt-0.5">
-                        oder klicken zum Auswählen
-                      </p>
-                      <p className="text-xs text-gray-300 mt-1">
-                        PDF, DOCX, TXT, MD, CSV, JSON
-                      </p>
+                      <p className="text-xs font-medium text-gray-600">Datei hierher ziehen</p>
+                      <p className="text-xs text-gray-400 mt-0.5">oder klicken zum Auswählen</p>
+                      <p className="text-xs text-gray-300 mt-1">PDF, DOCX, TXT, MD, CSV, JSON</p>
                     </>
                   )}
                 </div>
@@ -550,7 +908,6 @@ export default function DocGenPage() {
                 />
               </div>
 
-              {/* Loaded resources list */}
               {resources.length > 0 && (
                 <div className="space-y-1.5">
                   <p className="text-xs font-medium text-gray-500">Geladen</p>
@@ -560,9 +917,7 @@ export default function DocGenPage() {
                       <div
                         key={i}
                         className={`flex items-start gap-2 px-3 py-2 border rounded-lg ${
-                          hasWarning
-                            ? "bg-amber-50 border-amber-200"
-                            : "bg-green-50 border-green-200"
+                          hasWarning ? "bg-amber-50 border-amber-200" : "bg-green-50 border-green-200"
                         }`}
                       >
                         <span className={`text-xs shrink-0 mt-0.5 ${hasWarning ? "text-amber-500" : "text-green-600"}`}>
@@ -669,9 +1024,7 @@ export default function DocGenPage() {
                   <div className="text-center space-y-2">
                     <p className="text-4xl">📄</p>
                     <p>Gib einen Prompt ein und klicke &quot;Generieren&quot;</p>
-                    <p className="text-xs text-gray-300">
-                      Das Dokument erscheint hier während der Generierung
-                    </p>
+                    <p className="text-xs text-gray-300">Das Dokument erscheint hier während der Generierung</p>
                   </div>
                 </div>
               )}

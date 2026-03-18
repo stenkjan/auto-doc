@@ -1,33 +1,21 @@
-import fs from "fs/promises";
-import path from "path";
 import Anthropic from "@anthropic-ai/sdk";
 import { getModel, DEFAULT_MODEL_ID, type AIModel } from "./models";
-import { getContext, DEFAULT_CONTEXT_ID } from "./context-registry";
+import {
+  resolveContext,
+  loadContextContent,
+  DEFAULT_CONTEXT_ID,
+} from "./context-registry.server";
 
 /* ------------------------------------------------------------------ */
 /*  Rules & context loading                                             */
 /* ------------------------------------------------------------------ */
 
-async function loadFile(relativePath: string): Promise<string> {
-  const fullPath = path.join(
-    process.cwd(),
-    "src/lib/doc-gen",
-    relativePath
-  );
-  try {
-    return await fs.readFile(fullPath, "utf-8");
-  } catch {
-    return "";
-  }
-}
-
 async function buildSystemPrompt(contextId?: string): Promise<string> {
-  const globalRules = await loadFile("rules/global-rules.md");
-  const permissions = await loadFile("rules/user-permissions.md");
+  const globalRules = await loadContextContent("rules/global-rules.md");
+  const permissions = await loadContextContent("rules/user-permissions.md");
 
-  const resolvedContextId = contextId ?? DEFAULT_CONTEXT_ID;
-  const context = getContext(resolvedContextId);
-  const contextContent = context ? await loadFile(context.filePath) : "";
+  const context = await resolveContext(contextId ?? DEFAULT_CONTEXT_ID);
+  const contextContent = context ? await loadContextContent(context.filePath) : "";
 
   return `Du bist ein Dokumenten-Assistent für die Firma Hoam (Eco Chalets GmbH).
 Erstelle das gewünschte Dokument als professionell formatiertes Markdown.
