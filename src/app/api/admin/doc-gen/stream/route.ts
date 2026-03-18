@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { requireAdminAuth } from "@/lib/admin-auth";
 import { streamMarkdownDocument, type Resource } from "@/lib/doc-gen/ai-engine";
 import { DEFAULT_MODEL_ID } from "@/lib/doc-gen/models";
+import { DEFAULT_CONTEXT_ID } from "@/lib/doc-gen/context-registry";
 
 export async function POST(request: NextRequest) {
   const authError = await requireAdminAuth(request);
@@ -10,11 +11,13 @@ export async function POST(request: NextRequest) {
   const {
     prompt,
     modelId = DEFAULT_MODEL_ID,
+    contextId = DEFAULT_CONTEXT_ID,
     existingMarkdown,
     resources,
   } = await request.json() as {
     prompt?: string;
     modelId?: string;
+    contextId?: string;
     existingMarkdown?: string;
     resources?: Resource[];
   };
@@ -50,7 +53,8 @@ export async function POST(request: NextRequest) {
             send("chunk", { text: chunk });
           },
           existingMarkdown,
-          resources
+          resources,
+          contextId
         );
 
         send("complete", { markdown });

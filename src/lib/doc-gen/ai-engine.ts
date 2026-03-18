@@ -1,15 +1,17 @@
 import fs from "fs/promises";
 import path from "path";
+import Anthropic from "@anthropic-ai/sdk";
 import { getModel, DEFAULT_MODEL_ID, type AIModel } from "./models";
+import { getContext, DEFAULT_CONTEXT_ID } from "./context-registry";
 
 /* ------------------------------------------------------------------ */
-/*  Rules loading                                                       */
+/*  Rules & context loading                                             */
 /* ------------------------------------------------------------------ */
 
-async function loadRulesFile(relativePath: string): Promise<string> {
+async function loadFile(relativePath: string): Promise<string> {
   const fullPath = path.join(
     process.cwd(),
-    "src/lib/doc-gen/rules",
+    "src/lib/doc-gen",
     relativePath
   );
   try {
@@ -19,11 +21,15 @@ async function loadRulesFile(relativePath: string): Promise<string> {
   }
 }
 
-async function buildSystemPrompt(): Promise<string> {
-  const globalRules = await loadRulesFile("global-rules.md");
-  const permissions = await loadRulesFile("user-permissions.md");
+async function buildSystemPrompt(contextId?: string): Promise<string> {
+  const globalRules = await loadFile("rules/global-rules.md");
+  const permissions = await loadFile("rules/user-permissions.md");
 
-  return `Du bist ein Dokumentengenerator-Assistent für die Firma Hoam (Eco Chalets GmbH).
+  const resolvedContextId = contextId ?? DEFAULT_CONTEXT_ID;
+  const context = getContext(resolvedContextId);
+  const contextContent = context ? await loadFile(context.filePath) : "";
+
+  return `Du bist ein Dokumenten-Assistent für die Firma Hoam (Eco Chalets GmbH).
 Erstelle das gewünschte Dokument als professionell formatiertes Markdown.
 Nutze Überschriften (##, ###), Tabellen, Listen und Fettdruck um das Dokument klar zu strukturieren.
 Alle Texte auf Deutsch (Österreich). Verwende österreichische Zahlen- und Datumsformatierung.
@@ -31,23 +37,23 @@ Antworte NUR mit dem Markdown-Dokument – kein einleitendes Text, keine Erklär
 
 ${globalRules}
 
-${permissions}`;
+${permissions}
+
+${contextContent}`.trim();
 }
 
 /* ------------------------------------------------------------------ */
-/*  Provider adapter (OpenRouter only)                                 */
+/*  Provider adapters                                                   */
 /* ------------------------------------------------------------------ */
 
-async function callModel(
+async function callOpenRouter(
   model: AIModel,
   system: string,
   userMessage: string
 ): Promise<string> {
   const apiKey = process.env.OPENROUTER_API_KEY;
-  if (!apiKey) throw new Error("OPENROUTER_API_KEY not configured");
+  if (!apiKey) throw new Error("OPENROUTER_API_KEY nicht konfiguriert");
 
-  // Special OpenRouter routing aliases stay as-is (e.g. "openrouter/free", "openrouter/auto")
-  // Regular models strip only the "openrouter/" vendor prefix (e.g. "openrouter/meta-llama/llama-4-scout" → "meta-llama/llama-4-scout")
   const OPENROUTER_ALIASES = ["openrouter/free", "openrouter/auto"];
   const actualModel = OPENROUTER_ALIASES.includes(model.id)
     ? model.id
@@ -73,11 +79,45 @@ async function callModel(
 
   if (!res.ok) {
     const err = await res.text();
-    throw new Error(`OpenRouter API error ${res.status}: ${err}`);
+    throw new Error(`OpenRouter API Fehler ${res.status}: ${err}`);
   }
 
   const json = await res.json();
   return json?.choices?.[0]?.message?.content ?? "";
+}
+
+async function callAnthropic(
+  model: AIModel,
+  system: string,
+  userMessage: string
+): Promise<string> {
+  const apiKey = process.env.ANTHROPIC_API_KEY;
+  if (!apiKey) throw new Error("ANTHROPIC_API_KEY nicht konfiguriert. Bitte in .env eintragen.");
+
+  const client = new Anthropic({ apiKey });
+  const modelId = model.id.replace(/^anthropic\//, "");
+
+  const message = await client.messages.create({
+    model: modelId,
+    max_tokens: 8192,
+    system,
+    messages: [{ role: "user", content: userMessage }],
+  });
+
+  const block = message.content[0];
+  if (block.type !== "text") return "";
+  return block.text;
+}
+
+async function callModel(
+  model: AIModel,
+  system: string,
+  userMessage: string
+): Promise<string> {
+  if (model.provider === "anthropic") {
+    return callAnthropic(model, system, userMessage);
+  }
+  return callOpenRouter(model, system, userMessage);
 }
 
 /* ------------------------------------------------------------------ */
@@ -88,6 +128,7 @@ export interface Resource {
   name: string;
   content: string;
   type: "text";
+  warning?: string;
 }
 
 /* ------------------------------------------------------------------ */
@@ -104,7 +145,11 @@ function buildUserMessage(
   if (resources && resources.length > 0) {
     parts.push("## Referenzdokumente\n");
     for (const r of resources) {
-      parts.push(`### ${r.name}\n\`\`\`\n${r.content.slice(0, 40000)}\n\`\`\``);
+      if (r.warning) {
+        parts.push(`### ${r.name}\n_Hinweis: ${r.warning}_`);
+      } else {
+        parts.push(`### ${r.name}\n\`\`\`\n${r.content.slice(0, 40000)}\n\`\`\``);
+      }
     }
     parts.push("");
   }
@@ -127,19 +172,21 @@ function buildUserMessage(
 
 /**
  * Generate a Markdown document from a user prompt.
- * Optionally pass existingMarkdown to have Claude refine/edit it.
+ * Optionally pass existingMarkdown to have the model refine/edit it.
  * Optionally pass resources[] to inject reference documents into context.
+ * Optionally pass contextId to load a specific system-prompt context.
  */
 export async function generateMarkdownDocument(
   prompt: string,
   modelId: string = DEFAULT_MODEL_ID,
   existingMarkdown?: string,
-  resources?: Resource[]
+  resources?: Resource[],
+  contextId?: string
 ): Promise<{ markdown: string }> {
   const model = getModel(modelId);
-  if (!model) throw new Error(`Unknown model: ${modelId}`);
+  if (!model) throw new Error(`Unbekanntes Modell: ${modelId}`);
 
-  const systemPrompt = await buildSystemPrompt();
+  const systemPrompt = await buildSystemPrompt(contextId);
   const userMessage = buildUserMessage(prompt, existingMarkdown, resources);
 
   const markdown = await callModel(model, systemPrompt, userMessage);
@@ -148,20 +195,20 @@ export async function generateMarkdownDocument(
 
 /**
  * Stream a Markdown document from a user prompt.
- * All models route through OpenRouter (no native streaming).
- * onChunk is called once with the full response.
+ * onChunk is called once with the full response (no native streaming yet).
  */
 export async function streamMarkdownDocument(
   prompt: string,
   modelId: string = DEFAULT_MODEL_ID,
   onChunk: (text: string) => void,
   existingMarkdown?: string,
-  resources?: Resource[]
+  resources?: Resource[],
+  contextId?: string
 ): Promise<{ markdown: string }> {
   const model = getModel(modelId);
-  if (!model) throw new Error(`Unknown model: ${modelId}`);
+  if (!model) throw new Error(`Unbekanntes Modell: ${modelId}`);
 
-  const systemPrompt = await buildSystemPrompt();
+  const systemPrompt = await buildSystemPrompt(contextId);
   const userMessage = buildUserMessage(prompt, existingMarkdown, resources);
 
   const markdown = await callModel(model, systemPrompt, userMessage);

@@ -18,12 +18,6 @@
 - Primärfarbe: #3D6CE1 (Blau)
 - Schriftart: Geist (Fallback: system-ui, sans-serif)
 
-## Rechtliche Hinweise
-- Jedes Dokument enthält folgenden Hinweis:
-  "Dieses Dokument dient als Kostenschätzung in der Vorentwurfsphase und stellt kein verbindliches Angebot dar."
-- Kostenschätzungen erfolgen gemäß ÖNORM B 1801-1.
-
 ## Qualität
-- Alle Zahlen müssen rechnerisch korrekt und nachvollziehbar sein.
 - Fehlende Pflichtfelder werden mit sinnvollen Standardwerten befüllt.
 - Optionale Felder dürfen leer gelassen werden.

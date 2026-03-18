@@ -123,13 +123,24 @@ export async function POST(request: NextRequest) {
         const result = await mammoth.extractRawText({ buffer });
         content = result.value;
       } else if (mime === "application/pdf" || name.endsWith(".pdf")) {
+        let pdfWarning: string | undefined;
         try {
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
           const pdfParse = (await import("pdf-parse")) as any;
           const data = await (pdfParse.default ?? pdfParse)(buffer);
-          content = data.text;
-        } catch {
-          content = `[PDF-Datei: ${name} – Textextraktion nicht verfügbar]`;
+          content = data.text ?? "";
+          if (!content.trim()) {
+            pdfWarning = "PDF enthält keinen extrahierbaren Text (möglicherweise gescannt oder bildbasiert).";
+            console.warn(`[fetch-resource] PDF leer nach Extraktion: ${name}`);
+          }
+        } catch (pdfErr) {
+          const errMsg = pdfErr instanceof Error ? pdfErr.message : String(pdfErr);
+          console.error(`[fetch-resource] PDF-Extraktion fehlgeschlagen für "${name}":`, errMsg);
+          pdfWarning = `PDF-Textextraktion fehlgeschlagen: ${errMsg}`;
+          content = "";
+        }
+        if (pdfWarning) {
+          return NextResponse.json({ name, content, type: "text", warning: pdfWarning });
         }
       } else if (
         mime.startsWith("text/") ||
