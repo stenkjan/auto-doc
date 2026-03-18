@@ -127,10 +127,12 @@ export async function POST(request: NextRequest) {
       } else if (mime === "application/pdf" || name.endsWith(".pdf")) {
         let pdfWarning: string | undefined;
         try {
+          // Use the Node.js canvas-free build which doesn't require a worker
           const pdfjs = await import("pdfjs-dist/legacy/build/pdf.mjs") as typeof import("pdfjs-dist");
           
-          // Disable worker for server-side usage
-          pdfjs.GlobalWorkerOptions.workerSrc = "";
+          // Set workerSrc to avoid "No GlobalWorkerOptions.workerSrc specified" error
+          // We use a dummy path since we're running in Node.js server-side
+          pdfjs.GlobalWorkerOptions.workerSrc = "pdfjs-dist/build/pdf.worker.mjs";
           
           const uint8 = new Uint8Array(buffer.buffer, buffer.byteOffset, buffer.byteLength);
           const doc = await pdfjs.getDocument({
