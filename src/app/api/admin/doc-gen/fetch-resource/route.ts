@@ -125,10 +125,28 @@ export async function POST(request: NextRequest) {
       } else if (mime === "application/pdf" || name.endsWith(".pdf")) {
         let pdfWarning: string | undefined;
         try {
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          const pdfParse = (await import("pdf-parse")) as any;
-          const data = await (pdfParse.default ?? pdfParse)(buffer);
-          content = data.text ?? "";
+          const { getDocument } = await import("pdfjs-dist/legacy/build/pdf.mjs") as typeof import("pdfjs-dist");
+          const uint8 = new Uint8Array(buffer.buffer, buffer.byteOffset, buffer.byteLength);
+          const doc = await getDocument({
+            data: uint8,
+            useWorkerFetch: false,
+            isEvalSupported: false,
+            useSystemFonts: true,
+            disableAutoFetch: true,
+          }).promise;
+
+          const pageTexts: string[] = [];
+          for (let i = 1; i <= doc.numPages; i++) {
+            const page = await doc.getPage(i);
+            const textContent = await page.getTextContent();
+            const pageText = textContent.items
+              // eslint-disable-next-line @typescript-eslint/no-explicit-any
+              .map((item: any) => item.str ?? "")
+              .join(" ");
+            pageTexts.push(pageText);
+          }
+          content = pageTexts.join("\n").replace(/\s{3,}/g, "  ").trim();
+
           if (!content.trim()) {
             pdfWarning = "PDF enthält keinen extrahierbaren Text (möglicherweise gescannt oder bildbasiert).";
             console.warn(`[fetch-resource] PDF leer nach Extraktion: ${name}`);
