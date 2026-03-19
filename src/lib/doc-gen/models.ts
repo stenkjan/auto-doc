@@ -1,5 +1,12 @@
 export type AIProvider = "openrouter" | "anthropic";
 
+export interface ModelPricing {
+  /** Cost per 1M input tokens in USD */
+  inputPerM: number;
+  /** Cost per 1M output tokens in USD */
+  outputPerM: number;
+}
+
 export interface AIModel {
   id: string;
   provider: AIProvider;
@@ -7,6 +14,10 @@ export interface AIModel {
   description: string;
   contextWindow: string;
   paid?: boolean;
+  /** Whether this model reliably produces complete styled HTML documents for PDF rendering */
+  supportsHtmlOutput?: boolean;
+  /** Approximate pricing per 1M tokens in USD (for cost estimation) */
+  pricing?: ModelPricing;
 }
 
 export const AI_MODELS: AIModel[] = [
@@ -67,6 +78,8 @@ export const AI_MODELS: AIModel[] = [
     description: "Empfohlen – beste Qualität für professionelle Dokumente",
     contextWindow: "200k",
     paid: true,
+    supportsHtmlOutput: true,
+    pricing: { inputPerM: 3.0, outputPerM: 15.0 },
   },
   {
     id: "anthropic/claude-opus-4-5",
@@ -75,6 +88,8 @@ export const AI_MODELS: AIModel[] = [
     description: "Maximale Qualität – für komplexe Dokumente",
     contextWindow: "200k",
     paid: true,
+    supportsHtmlOutput: true,
+    pricing: { inputPerM: 15.0, outputPerM: 75.0 },
   },
   // ── Paid models (via OpenRouter) ────────────────────────────────────
   {
@@ -84,6 +99,8 @@ export const AI_MODELS: AIModel[] = [
     description: "Claude Sonnet via OpenRouter – kein separater API Key nötig",
     contextWindow: "200k",
     paid: true,
+    supportsHtmlOutput: true,
+    pricing: { inputPerM: 3.0, outputPerM: 15.0 },
   },
   {
     id: "openrouter/openai/gpt-4o",
@@ -92,6 +109,8 @@ export const AI_MODELS: AIModel[] = [
     description: "OpenAI – stark bei strukturierten Dokumenten",
     contextWindow: "128k",
     paid: true,
+    supportsHtmlOutput: true,
+    pricing: { inputPerM: 2.5, outputPerM: 10.0 },
   },
 ];
 
@@ -103,4 +122,29 @@ export function getModel(id: string): AIModel | undefined {
 
 export function getModelsByProvider(provider: AIProvider): AIModel[] {
   return AI_MODELS.filter((m) => m.provider === provider);
+}
+
+/** USD → EUR conversion rate (approximate, update periodically) */
+const USD_TO_EUR = 0.92;
+
+/**
+ * Estimate cost in EUR for a given model and token counts.
+ * Returns null if the model has no pricing (free models).
+ */
+export function estimateCostEur(
+  modelId: string,
+  inputTokens: number,
+  outputTokens: number
+): { usd: number; eur: number; formatted: string } | null {
+  const model = getModel(modelId);
+  if (!model?.pricing) return null;
+  const usd =
+    (inputTokens / 1_000_000) * model.pricing.inputPerM +
+    (outputTokens / 1_000_000) * model.pricing.outputPerM;
+  const eur = usd * USD_TO_EUR;
+  const formatted =
+    eur < 0.001
+      ? "< € 0,001"
+      : `€ ${eur.toFixed(4).replace(".", ",")}`;
+  return { usd, eur, formatted };
 }

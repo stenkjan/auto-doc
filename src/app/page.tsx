@@ -11,7 +11,7 @@ export default function Home() {
           AI-powered document generation platform
         </p>
         <Link
-          href="/admin/doc-gen"
+          href="/doc-gen"
           className="inline-block bg-blue-600 text-white px-6 py-3 rounded-lg font-medium hover:bg-blue-700 transition-colors"
         >
           Open Document Generator

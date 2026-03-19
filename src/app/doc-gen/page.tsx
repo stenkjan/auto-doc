@@ -54,7 +54,7 @@ function ContextManagerModal({
   const fetchCustomContexts = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await fetch("/api/admin/doc-gen/contexts");
+      const res = await fetch("/api/doc-gen/contexts");
       const json = await res.json();
       setCustomContexts(json.contexts ?? []);
     } catch {
@@ -85,7 +85,7 @@ function ContextManagerModal({
     if (!editingId || !editContent.trim()) return;
     setSaving(true);
     try {
-      const res = await fetch("/api/admin/doc-gen/contexts", {
+      const res = await fetch("/api/doc-gen/contexts", {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ id: editingId, label: editLabel, content: editContent }),
@@ -108,7 +108,7 @@ function ContextManagerModal({
   const deleteContext = useCallback(async (id: string, label: string) => {
     if (!confirm(`Kontext "${label}" wirklich löschen?`)) return;
     try {
-      const res = await fetch("/api/admin/doc-gen/contexts", {
+      const res = await fetch("/api/doc-gen/contexts", {
         method: "DELETE",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ id }),
@@ -132,7 +132,7 @@ function ContextManagerModal({
     }
     setSaving(true);
     try {
-      const res = await fetch("/api/admin/doc-gen/contexts", {
+      const res = await fetch("/api/doc-gen/contexts", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ label: newLabel, description: newDescription, content: newContent }),
@@ -386,7 +386,7 @@ export default function DocGenPage() {
 
   const refreshContexts = useCallback(async () => {
     try {
-      const res = await fetch("/api/admin/doc-gen/contexts");
+      const res = await fetch("/api/doc-gen/contexts");
       const json = await res.json();
       const custom: ContextEntry[] = json.contexts ?? [];
       setAllContexts([...BUILTIN_CONTEXTS, ...custom]);
@@ -424,7 +424,7 @@ export default function DocGenPage() {
     setStatusMessage("Analysiere Anfrage und plane...");
     
     try {
-      const res = await fetch("/api/admin/doc-gen/plan", {
+      const res = await fetch("/api/doc-gen/plan", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -469,7 +469,12 @@ export default function DocGenPage() {
   /* ── PDF Generation ───────────────────────────────────────────── */
 
   const generateStyledPdf = useCallback(async () => {
-     if (!prompt.trim() && !isEditMode && !result?.markdown) {
+     let finalPrompt = prompt.trim();
+     if (isPlanMode && planResult?.ready) {
+       finalPrompt = `Bitte erstelle das Dokument exakt nach diesem Plan in HTML:\n\n${planResult.proposal}`;
+     }
+
+     if (!finalPrompt && !isEditMode && !result?.markdown) {
         toast.error("Bitte einen Text generieren oder Prompt eingeben");
         return;
      }
@@ -480,14 +485,15 @@ export default function DocGenPage() {
      setGeneratedHtml(null);
 
      try {
-        const res = await fetch("/api/admin/doc-gen/generate-pdf", {
+        const res = await fetch("/api/doc-gen/generate-pdf", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-             prompt: prompt || "Formatiere das angezeigte Dokument in perfektes HTML für PDF-Druck.",
+             prompt: finalPrompt || "Formatiere das angezeigte Dokument in perfektes HTML für PDF-Druck.",
              modelId: selectedModelId,
              contextId: selectedContextId,
              resources: resources.length > 0 ? resources : undefined,
+             existingMarkdown: result?.markdown,
           })
         });
 
@@ -514,7 +520,7 @@ export default function DocGenPage() {
     if (!resourceUrl.trim()) return;
     setLoadingResource(true);
     try {
-      const res = await fetch("/api/admin/doc-gen/fetch-resource", {
+      const res = await fetch("/api/doc-gen/fetch-resource", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ url: resourceUrl.trim() }),
@@ -541,7 +547,7 @@ export default function DocGenPage() {
     try {
       const formData = new FormData();
       formData.append("file", file);
-      const res = await fetch("/api/admin/doc-gen/fetch-resource", {
+      const res = await fetch("/api/doc-gen/fetch-resource", {
         method: "POST",
         body: formData,
       });
@@ -587,7 +593,12 @@ export default function DocGenPage() {
   /* ── Generation ───────────────────────────────────────────────── */
 
   const generate = useCallback(async () => {
-    if (!prompt.trim()) {
+    let finalPrompt = prompt.trim();
+    if (isPlanMode && planResult?.ready) {
+      finalPrompt = `Bitte erstelle das Dokument exakt nach diesem Plan:\n\n${planResult.proposal}`;
+    }
+
+    if (!finalPrompt) {
       toast.error("Bitte einen Prompt eingeben");
       return;
     }
@@ -600,11 +611,11 @@ export default function DocGenPage() {
     const existingMarkdown = isEditMode ? result?.markdown : undefined;
 
     try {
-      const res = await fetch("/api/admin/doc-gen/stream", {
+      const res = await fetch("/api/doc-gen/stream", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          prompt,
+          prompt: finalPrompt,
           modelId: selectedModelId,
           contextId: selectedContextId,
           existingMarkdown,
@@ -644,7 +655,11 @@ export default function DocGenPage() {
                 accumulated += eventData.text;
                 setStreamingMarkdown(accumulated);
               } else if (currentEvent === "complete") {
-                setResult({ markdown: eventData.markdown });
+                const finalMarkdown = eventData.markdown
+                  .replace(/^```[a-z]*\s*/i, "")
+                  .replace(/\s*```$/i, "")
+                  .trim();
+                setResult({ markdown: finalMarkdown });
                 if (eventData.cost) setCost(eventData.cost);
                 setStreamingMarkdown("");
                 setStatus("done");
