@@ -1,5 +1,5 @@
 import { createAnthropic } from "@ai-sdk/anthropic";
-import { createOpenAI } from "@ai-sdk/openai";
+import { createOpenAICompatible } from "@ai-sdk/openai-compatible";
 import type { LanguageModel } from "ai";
 
 export type AIProvider = "openrouter" | "anthropic";
@@ -161,11 +161,10 @@ const anthropicProvider = createAnthropic({
   apiKey: process.env.ANTHROPIC_API_KEY ?? "",
 });
 
-const openRouterProvider = createOpenAI({
+const openRouterProvider = createOpenAICompatible({
+  name: "openrouter",
   apiKey: process.env.OPENROUTER_API_KEY ?? "",
   baseURL: "https://openrouter.ai/api/v1",
-  // Force Chat Completions format — OpenRouter does not support the OpenAI Responses API
-  compatibility: "compatible",
   headers: {
     "HTTP-Referer": "https://hoam-house.com",
     "X-Title": "Auto Doc Generator",

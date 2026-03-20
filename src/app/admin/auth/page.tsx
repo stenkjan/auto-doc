@@ -23,11 +23,13 @@ export default function AdminAuthPage() {
       });
 
       if (res?.error) {
-        setError("Falsches Passwort");
+        console.error("[auth] signIn error:", res.error, "status:", res.status);
+        setError("Falsches Passwort oder Server-Konfigurationsfehler");
       } else if (res?.ok) {
         router.push("/doc-gen");
       }
-    } catch {
+    } catch (err) {
+      console.error("[auth] signIn exception:", err);
       setError("Verbindungsfehler");
     } finally {
       setLoading(false);

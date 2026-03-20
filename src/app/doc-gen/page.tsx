@@ -526,7 +526,7 @@ export default function DocGenPage() {
       // Parse the server-rendered HTML into a DOM element for html2pdf
       const parser = new DOMParser();
       const doc = parser.parseFromString(html, "text/html");
-      const element = doc.querySelector(".page-wrapper") ?? doc.body;
+      const element = (doc.querySelector(".page-wrapper") as HTMLElement | null) ?? doc.body;
 
       await html2pdf()
         .set({
