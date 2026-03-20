@@ -1,6 +1,6 @@
 import { NextRequest } from "next/server";
 import { requireAdminAuth } from "@/lib/admin-auth";
-import { streamText, type Message } from "ai";
+import { streamText, type CoreMessage } from "ai";
 import { getLanguageModel } from "@/lib/doc-gen/models";
 import { DEFAULT_CONTEXT_ID } from "@/lib/doc-gen/context-registry";
 import { createDocGenTools } from "@/lib/doc-gen/tools";
@@ -24,7 +24,7 @@ export async function POST(request: NextRequest) {
     resources,
     sessionId,
   } = (await request.json()) as {
-    messages: Message[];
+    messages: CoreMessage[];
     modelId?: string;
     contextId?: string;
     existingMarkdown?: string;
