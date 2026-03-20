@@ -20,6 +20,24 @@ export const BUILTIN_CONTEXTS: AIContext[] = [
     filePath: "contexts/cost-plan.md",
   },
   {
+    id: "baukoordination",
+    label: "Baukoordination & ÖBA",
+    description: "Angebote für Baukoordination und ÖBA gemäß ÖIBA Leitfäden (LPH 1–9)",
+    filePath: "contexts/baukoordination.md",
+  },
+  {
+    id: "report",
+    label: "Bericht & Protokoll",
+    description: "Statusberichte, Protokolle, Analysen und Dokumentation",
+    filePath: "contexts/report.md",
+  },
+  {
+    id: "financial-summary",
+    label: "Finanzzusammenfassung",
+    description: "Finanzberichte, Controlling und KPI-Dashboards",
+    filePath: "contexts/financial-summary.md",
+  },
+  {
     id: "summary",
     label: "Zusammenfassung & Analyse",
     description: "Dokumente zusammenfassen und strukturiert aufbereiten",

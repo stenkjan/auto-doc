@@ -1,10 +1,11 @@
 import { NextRequest } from "next/server";
 import { requireAdminAuth } from "@/lib/admin-auth";
-import { streamText } from "ai";
+import { streamText, stepCountIs } from "ai";
+import type { ModelMessage } from "ai";
 import { getLanguageModel } from "@/lib/doc-gen/models";
 import { DEFAULT_CONTEXT_ID } from "@/lib/doc-gen/context-registry";
 import { createDocGenTools } from "@/lib/doc-gen/tools";
-import { buildUserMessage, type Resource } from "@/lib/doc-gen/ai-engine";
+import { buildUserMessage, buildSystemPrompt, type Resource } from "@/lib/doc-gen/ai-engine";
 import crypto from "crypto";
 
 export const maxDuration = 300; // Allow 5 minutes for agentic iterative steps
@@ -24,11 +25,7 @@ export async function POST(request: NextRequest) {
     resources,
     sessionId,
   } = (await request.json()) as {
-    messages: Array<{
-      role: "user" | "assistant" | "system" | "tool";
-      content: string;
-      [key: string]: unknown;
-    }>;
+    messages: ModelMessage[];
     modelId?: string;
     contextId?: string;
     existingMarkdown?: string;
@@ -45,35 +42,37 @@ export async function POST(request: NextRequest) {
 
   // Get the latest user message
   const lastMessage = messages[messages.length - 1];
-  
+  const lastContent = typeof lastMessage.content === "string"
+    ? lastMessage.content
+    : JSON.stringify(lastMessage.content);
+
   // Build the enhanced prompt including existing markdown and file resources
   const enhancedPrompt = buildUserMessage(
-    lastMessage.content,
+    lastContent,
     existingMarkdown,
     resources
   );
 
   // Replace the last message with the enhanced one
-  const enhancedMessages = [...messages];
-  enhancedMessages[enhancedMessages.length - 1] = {
-    ...lastMessage,
-    content: enhancedPrompt,
-  };
+  const enhancedMessages: ModelMessage[] = [
+    ...messages.slice(0, -1),
+    { role: "user" as const, content: enhancedPrompt },
+  ];
 
   const model = getLanguageModel(modelId);
   const tools = createDocGenTools(activeSessionId);
+
+  // Load full system prompt (global-rules + permissions + context-specific rules)
+  const systemPrompt = await buildSystemPrompt(contextId);
 
   // Initialize the stream using the Vercel AI SDK
   const result = streamText({
     model,
     messages: enhancedMessages,
     tools,
-    maxSteps: 5, // Allow the agent to call tools up to 5 times iteratively
-    system: `Du bist ein hochintelligenter, agentischer Dokumenten-Assistent...
-Greife auf Tools zu um Fakten zu finden!
-Dein Kontext-Token: ${contextId} (wird im Backend geladen, falls nötig).
-`,
+    stopWhen: stepCountIs(5), // Allow the agent to call tools up to 5 times iteratively
+    system: systemPrompt,
   });
 
-  return result.toDataStreamResponse();
+  return result.toTextStreamResponse();
 }

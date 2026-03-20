@@ -2,7 +2,8 @@
  * Core AI Engine using Vercel AI SDK.
  * Powers the "Prompt Machine" architecture.
  */
-import { generateText, streamText, type Message } from "ai";
+import { generateText, streamText } from "ai";
+import type { ModelMessage } from "ai";
 import { getLanguageModel } from "./models";
 import { DEFAULT_CONTEXT_ID, BUILTIN_CONTEXTS } from "./context-registry";
 import { resolveContext, loadContextContent } from "./context-registry.server";
@@ -24,7 +25,7 @@ export interface Resource {
 /*  System prompt builders                                              */
 /* ------------------------------------------------------------------ */
 
-async function buildSystemPrompt(contextId?: string): Promise<string> {
+export async function buildSystemPrompt(contextId?: string): Promise<string> {
   const globalRules = await loadContextContent("rules/global-rules.md");
   const permissions = await loadContextContent("rules/user-permissions.md");
   const context = await resolveContext(contextId ?? DEFAULT_CONTEXT_ID);
@@ -108,7 +109,7 @@ export async function generateMarkdownDocument(
     model,
     system: systemPrompt,
     prompt: userMessage,
-    maxTokens: 8192,
+    maxOutputTokens: 8192,
   });
 
   return { markdown: text };

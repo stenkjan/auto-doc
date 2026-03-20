@@ -5,6 +5,7 @@ import dynamic from "next/dynamic";
 import remarkGfm from "remark-gfm";
 import toast from "react-hot-toast";
 import { useChat } from "@ai-sdk/react";
+import { TextStreamChatTransport } from "ai";
 import { AI_MODELS, DEFAULT_MODEL_ID } from "@/lib/doc-gen/models";
 import { BUILTIN_CONTEXTS, DEFAULT_CONTEXT_ID } from "@/lib/doc-gen/context-registry";
 import type { Resource } from "@/lib/doc-gen/ai-engine";
@@ -385,17 +386,39 @@ export default function DocGenPage() {
 
   /* ── Vercel AI SDK Chat Hook ────────────────────────────────────── */
 
-  const { messages, input, handleInputChange, handleSubmit, isLoading, error } = useChat({
-    api: "/api/doc-gen/stream",
-    body: {
+  // Local input state (useChat v6 no longer manages input)
+  const [input, setInput] = useState("");
+
+  // Refs hold the latest dynamic values so the stable transport can read them
+  const bodyRef = useRef({
+    modelId: selectedModelId,
+    contextId: selectedContextId,
+    resources: resources.length > 0 ? resources : (undefined as Resource[] | undefined),
+  });
+  useEffect(() => {
+    bodyRef.current = {
       modelId: selectedModelId,
       contextId: selectedContextId,
       resources: resources.length > 0 ? resources : undefined,
-    },
-    onError: (err) => {
+    };
+  }, [selectedModelId, selectedContextId, resources]);
+
+  // Create the transport once so the chat state survives re-renders
+  const transportRef = useRef(
+    new TextStreamChatTransport({
+      api: "/api/doc-gen/stream",
+      body: () => bodyRef.current,
+    })
+  );
+
+  const { messages, sendMessage, status, error } = useChat({
+    transport: transportRef.current,
+    onError: (err: Error) => {
       toast.error(err.message || "Fehler bei der Generierung");
     },
   });
+
+  const isLoading = status === "submitted" || status === "streaming";
 
   // Auto-scroll chat
   useEffect(() => {
@@ -405,8 +428,11 @@ export default function DocGenPage() {
   }, [messages]);
 
   // Extract the latest markdown from assistant messages for the preview panel
-  const latestAssistantMessage = [...messages].reverse().find(m => m.role === "assistant" && m.content.length > 0);
-  const latestMarkdown = latestAssistantMessage?.content || "";
+  const getMessageText = (m: { parts: Array<{ type: string; text?: string }> }) =>
+    m.parts.filter(p => p.type === "text").map(p => p.text ?? "").join("");
+
+  const latestAssistantMessage = [...messages].reverse().find(m => m.role === "assistant" && getMessageText(m).length > 0);
+  const latestMarkdown = latestAssistantMessage ? getMessageText(latestAssistantMessage) : "";
 
   /* ── Resource loading ─────────────────────────────────────────── */
 
@@ -638,27 +664,31 @@ export default function DocGenPage() {
                   )}
                   
                   {/* Text Content */}
-                  {m.content && m.role === 'user' && (
+                  {m.role === 'user' && getMessageText(m) && (
                     <div className="bg-blue-600 text-white rounded-2xl rounded-tr-sm px-4 py-2 max-w-[85%] text-sm shadow-sm whitespace-pre-wrap">
-                      {m.content}
+                      {getMessageText(m)}
                     </div>
                   )}
 
-                  {/* Assistant response - mostly hidden in chat if it's the final doc, but visible briefly */}
-                  {m.content && m.role === 'assistant' && (
-                    <div className="bg-gray-100 text-gray-800 rounded-2xl rounded-tl-sm px-4 py-2 max-w-[95%] text-sm shadow-sm prose prose-sm prose-blue">
-                      <ReactMarkdown remarkPlugins={[remarkGfm]}>
-                        {m.content.length > 300 && m === messages[messages.length-1] 
-                          ? m.content.substring(0, 300) + "...\n\n_(Gesamtes Dokument im rechten Panel)_"
-                          : m.content}
-                      </ReactMarkdown>
-                    </div>
-                  )}
+                  {/* Assistant response */}
+                  {m.role === 'assistant' && getMessageText(m) && (() => {
+                    const text = getMessageText(m);
+                    return (
+                      <div className="bg-gray-100 text-gray-800 rounded-2xl rounded-tl-sm px-4 py-2 max-w-[95%] text-sm shadow-sm prose prose-sm prose-blue">
+                        <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                          {text.length > 300 && m === messages[messages.length-1] 
+                            ? text.substring(0, 300) + "...\n\n_(Gesamtes Dokument im rechten Panel)_"
+                            : text}
+                        </ReactMarkdown>
+                      </div>
+                    );
+                  })()}
 
                   {/* Tool Call Indicators */}
-                  {m.toolInvocations?.map(toolInvocation => {
-                    const toolCallId = toolInvocation.toolCallId;
-                    const toolName = toolInvocation.toolName;
+                  {m.parts.filter(p => p.type === 'dynamic-tool' || p.type.startsWith('tool-')).map((part) => {
+                    const toolPart = part as { type: string; toolCallId: string; toolName?: string; state: string; input?: unknown; output?: unknown };
+                    const toolCallId = toolPart.toolCallId;
+                    const toolName = toolPart.toolName ?? toolPart.type.replace(/^tool-/, '');
                     
                     return (
                       <div key={toolCallId} className="mt-2 text-xs text-gray-500 bg-gray-50 border border-gray-100 rounded-lg p-2 max-w-[95%] w-full flex flex-col gap-1">
@@ -669,22 +699,20 @@ export default function DocGenPage() {
                           {toolName === 'saveToMemory' && <span>💾 Speichere ins Gedächtnis...</span>}
                           {toolName === 'loadFromMemory' && <span>🧠 Lade aus Gedächtnis...</span>}
                           
-                          {'result' in toolInvocation ? (
+                          {toolPart.state === 'output-available' ? (
                              <span className="text-green-600 ml-auto">✓ Fertig</span>
                           ) : (
                              <span className="text-blue-600 animate-pulse ml-auto">Lädt...</span>
                           )}
                         </div>
                         
-                        {/* Show arguments briefly */}
                         <div className="font-mono text-[10px] text-gray-400 truncate opacity-70">
-                          {JSON.stringify(toolInvocation.args)}
+                          {JSON.stringify(toolPart.input)}
                         </div>
 
-                        {/* Show result briefly if available */}
-                        {'result' in toolInvocation && (
+                        {toolPart.state === 'output-available' && (
                           <div className="font-mono text-[10px] text-gray-400 truncate mt-1 pt-1 border-t border-gray-100">
-                            Result: {JSON.stringify(toolInvocation.result).substring(0, 100)}...
+                            Result: {JSON.stringify(toolPart.output).substring(0, 100)}...
                           </div>
                         )}
                       </div>
@@ -746,16 +774,22 @@ export default function DocGenPage() {
 
           {/* Chat Input */}
           <div className="p-3 bg-white border-t border-gray-200">
-            <form onSubmit={handleSubmit} className="relative">
+            <form onSubmit={(e) => {
+              e.preventDefault();
+              if (input.trim() && !isLoading) {
+                sendMessage({ text: input.trim() });
+                setInput("");
+              }
+            }} className="relative">
               <textarea
                 value={input}
-                onChange={handleInputChange}
+                onChange={(e) => setInput(e.target.value)}
                 onKeyDown={(e) => {
                   if (e.key === 'Enter' && !e.shiftKey) {
                     e.preventDefault();
                     if (input.trim() && !isLoading) {
-                      const form = e.target as HTMLTextAreaElement;
-                      form.form?.dispatchEvent(new Event('submit', { cancelable: true, bubbles: true }));
+                      sendMessage({ text: input.trim() });
+                      setInput("");
                     }
                   }
                 }}
