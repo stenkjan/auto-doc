@@ -164,6 +164,8 @@ const anthropicProvider = createAnthropic({
 const openRouterProvider = createOpenAI({
   apiKey: process.env.OPENROUTER_API_KEY ?? "",
   baseURL: "https://openrouter.ai/api/v1",
+  // Force Chat Completions format — OpenRouter does not support the OpenAI Responses API
+  compatibility: "compatible",
   headers: {
     "HTTP-Referer": "https://hoam-house.com",
     "X-Title": "Auto Doc Generator",

@@ -347,6 +347,7 @@ export default function DocGenPage() {
   const [resources, setResources] = useState<(Resource & { warning?: string })[]>([]);
   const [resourceUrl, setResourceUrl] = useState("");
   const [loadingResource, setLoadingResource] = useState(false);
+  const [isDragOver, setIsDragOver] = useState(false);
 
   const modelPickerRef = useRef<HTMLDivElement>(null);
   const contextPickerRef = useRef<HTMLDivElement>(null);
@@ -436,6 +437,37 @@ export default function DocGenPage() {
 
   /* ── Resource loading ─────────────────────────────────────────── */
 
+  /** Upload a single File object to /api/doc-gen/fetch-resource and append to resources */
+  const uploadFile = useCallback(async (file: File) => {
+    const formData = new FormData();
+    formData.append("file", file);
+    try {
+      const res = await fetch("/api/doc-gen/fetch-resource", { method: "POST", body: formData });
+      const json = await res.json();
+      if (res.ok) {
+        setResources((p) => [...p, json]);
+        if (json.warning) toast.error(`"${json.name}" geladen – mit Warnung`);
+        else toast.success(`"${json.name}" angehängt`);
+      } else {
+        toast.error(json.error || "Upload fehlgeschlagen");
+      }
+    } catch {
+      toast.error("Upload fehlgeschlagen");
+    }
+  }, []);
+
+  /** Handle drag-and-drop onto the chat panel */
+  const handleDrop = useCallback(async (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragOver(false);
+    const files = Array.from(e.dataTransfer.files);
+    if (files.length === 0) return;
+    setLoadingResource(true);
+    for (const file of files) await uploadFile(file);
+    setLoadingResource(false);
+  }, [uploadFile]);
+
   const loadDriveResource = useCallback(async () => {
     if (!resourceUrl.trim()) return;
     setLoadingResource(true);
@@ -464,78 +496,71 @@ export default function DocGenPage() {
 
   /* ── PDF Export ───────────────────────────────────────────────── */
 
+  /** Fetch the server-rendered styled A4 HTML for the current markdown */
+  const fetchRenderedHTML = useCallback(async (): Promise<string | null> => {
+    if (!latestMarkdown) {
+      toast.error("Kein Dokument vorhanden.");
+      return null;
+    }
+    const res = await fetch("/api/doc-gen/render", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ markdown: latestMarkdown }),
+    });
+    if (!res.ok) {
+      toast.error("Render-Fehler: " + res.statusText);
+      return null;
+    }
+    return res.text();
+  }, [latestMarkdown]);
+
   const downloadPDF = useCallback(async () => {
-    if (!previewRef.current) return;
     try {
+      toast.success("PDF wird generiert...");
+      const html = await fetchRenderedHTML();
+      if (!html) return;
+
       const html2pdf = (await import("html2pdf.js")).default;
       const filename = `Dokument-${Date.now()}.pdf`;
-      toast.success("PDF wird generiert...");
-      
-      const element = previewRef.current;
-      // Temporary styling for print
-      const originalStyle = element.style.cssText;
-      element.style.padding = '0';
-      element.style.height = 'auto';
-      element.style.overflow = 'visible';
+
+      // Parse the server-rendered HTML into a DOM element for html2pdf
+      const parser = new DOMParser();
+      const doc = parser.parseFromString(html, "text/html");
+      const element = doc.querySelector(".page-wrapper") ?? doc.body;
 
       await html2pdf()
         .set({
-          margin: [15, 15, 15, 15],
+          margin: 0,
           filename,
-          html2canvas: { scale: 2, useCORS: true },
+          html2canvas: { scale: 2, useCORS: true, logging: false },
           jsPDF: { unit: "mm", format: "a4", orientation: "portrait" },
         })
         .from(element)
         .save();
-        
-      // Restore styles
-      element.style.cssText = originalStyle;
+
       toast.success("PDF erfolgreich gespeichert");
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "PDF-Erzeugung fehlgeschlagen");
     }
-  }, []);
+  }, [fetchRenderedHTML]);
 
-  const printDocument = useCallback(() => {
-    if (!previewRef.current) return;
-    const printWindow = window.open('', '_blank');
+  const printDocument = useCallback(async () => {
+    const html = await fetchRenderedHTML();
+    if (!html) return;
+
+    const printWindow = window.open("", "_blank");
     if (!printWindow) {
       toast.error("Popup-Blocker verhindert das Drucken.");
       return;
     }
-
-    const html = `
-      <html>
-        <head>
-          <title>Dokument Drucken</title>
-          <style>
-            body { font-family: system-ui, -apple-system, sans-serif; padding: 20px; line-height: 1.6; color: #111; max-width: 800px; margin: 0 auto; }
-            h1, h2, h3 { color: #000; }
-            code { background: #f4f4f4; padding: 2px 4px; border-radius: 4px; }
-            pre { background: #f4f4f4; padding: 15px; border-radius: 8px; overflow-x: auto; }
-            table { border-collapse: collapse; width: 100%; margin-bottom: 1em; }
-            th, td { border: 1px solid #ddd; padding: 8px; text-align: left; }
-            th { background-color: #f8f9fa; }
-            @media print {
-              body { padding: 0; }
-              @page { margin: 2cm; }
-            }
-          </style>
-        </head>
-        <body class="prose prose-blue max-w-none">
-          ${previewRef.current.innerHTML}
-        </body>
-      </html>
-    `;
-
     printWindow.document.write(html);
     printWindow.document.close();
-    // Wait for styling to apply before triggering print dialog
+    // Allow Geist font + styles to load before triggering print dialog
     setTimeout(() => {
       printWindow.focus();
       printWindow.print();
-    }, 250);
-  }, []);
+    }, 600);
+  }, [fetchRenderedHTML]);
 
   return (
     <div className="min-h-screen bg-gray-50 flex flex-col">
@@ -627,7 +652,23 @@ export default function DocGenPage() {
       <div className="flex-1 flex overflow-hidden max-w-[1600px] w-full mx-auto p-4 gap-4">
         
         {/* LEFT: Agentic Chat */}
-        <div className="w-[450px] shrink-0 bg-white rounded-xl border border-gray-200 shadow-sm flex flex-col overflow-hidden">
+        <div
+          className={`w-[450px] shrink-0 bg-white rounded-xl border shadow-sm flex flex-col overflow-hidden relative transition-colors ${isDragOver ? "border-blue-400 ring-2 ring-blue-300 bg-blue-50/20" : "border-gray-200"}`}
+          onDragOver={(e) => { e.preventDefault(); e.stopPropagation(); setIsDragOver(true); }}
+          onDragEnter={(e) => { e.preventDefault(); e.stopPropagation(); setIsDragOver(true); }}
+          onDragLeave={(e) => { e.preventDefault(); e.stopPropagation(); setIsDragOver(false); }}
+          onDrop={handleDrop}
+        >
+          {/* Drag overlay */}
+          {isDragOver && (
+            <div className="absolute inset-0 z-20 flex flex-col items-center justify-center bg-blue-50/90 rounded-xl border-2 border-dashed border-blue-400 pointer-events-none gap-2">
+              <svg className="w-8 h-8 text-blue-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
+              </svg>
+              <p className="text-blue-600 font-semibold text-sm">Datei hier ablegen</p>
+              <p className="text-blue-400 text-xs">PDF, DOCX, TXT, MD, CSV, JSON</p>
+            </div>
+          )}
           <div className="p-3 border-b border-gray-100 bg-gray-50 text-sm font-semibold text-gray-700 flex justify-between items-center">
             <span>Agent Chat</span>
             <span className="text-xs font-normal text-gray-500 px-2 py-0.5 bg-gray-200 rounded-full">{isLoading ? 'Denkt nach...' : 'Bereit'}</span>
@@ -758,17 +799,9 @@ export default function DocGenPage() {
                 const files = e.target.files;
                 if (!files) return;
                 setLoadingResource(true);
-                for (let i = 0; i < files.length; i++) {
-                   const formData = new FormData();
-                   formData.append("file", files[i]);
-                   try {
-                     const res = await fetch("/api/doc-gen/fetch-resource", { method: "POST", body: formData });
-                     const json = await res.json();
-                     if (res.ok) setResources(p => [...p, json]);
-                     else toast.error(json.error || "Fehler beim Upload");
-                   } catch { toast.error("Upload fehlgeschlagen"); }
-                }
+                for (let i = 0; i < files.length; i++) await uploadFile(files[i]);
                 setLoadingResource(false);
+                e.target.value = "";
              }} />
           </div>
 
