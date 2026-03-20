@@ -234,7 +234,6 @@ function renderConclusionPage(data: ReportDocument): string {
 
 function sharedStyles(): string {
   return `
-    @import url('https://fonts.googleapis.com/css2?family=Geist:wght@300;400;500;600;700&display=swap');
     @page { size: A4; margin: 18mm 16mm 20mm 16mm; }
     * { box-sizing: border-box; margin: 0; padding: 0; }
     body {

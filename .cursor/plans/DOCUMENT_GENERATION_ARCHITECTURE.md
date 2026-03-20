@@ -72,132 +72,158 @@ From implementing Kostenplanung (8 pages) and Baukoordination (6 pages):
 
 ### 2.1 File Structure
 
-```
-src/lib/{document-type}/
-├── index.ts                    # Clean exports
-├── types.ts                    # TypeScript interfaces
-├── computations.ts             # Calculations & formatting
-├── defaultData.ts              # Example project data
-├── {DocumentType}Template.ts   # HTML generator
-└── styles.ts (optional)        # Extracted CSS if very large
+Each document type lives under `src/lib/doc-gen/templates/{document-type}/` with exactly three files:
 
-src/app/api/{document-type}/
-├── route.ts                    # POST: create, GET: info
-└── preview/
-    └── route.ts                # GET: preview default
+```
+src/lib/doc-gen/templates/{document-type}/
+├── index.ts          # Registration + DocumentTemplate<T> export via registerTemplate()
+├── types.ts          # Interfaces + Zod schema + compute*() + DEFAULT_*
+└── html-template.ts  # sharedStyles() + page renderers + generate*HTML()
+```
+
+> **Note:** `computations.ts`, `defaultData.ts`, and PascalCase `{DocumentType}Template.ts`
+> files are **not** part of the unified platform. Computation logic and default data live
+> inside `types.ts`. The template file uses kebab-case directory naming.
+
+Shared utilities live at the `doc-gen` level:
+
+```
+src/lib/doc-gen/
+├── formatters.ts          # Shared formatCurrency() and formatNumber() (Austrian locale)
+├── template-registry.ts   # DocumentTemplate<T> interface + registry map
+├── init.ts                # Calls registerTemplate() for each document type
+└── templates/
+    ├── cost-plan/
+    ├── baukoordination/
+    ├── financial-summary/
+    └── report/
 ```
 
 
 ### 2.2 Core Modules Explained
 
-**types.ts** – Data Contracts
+**`types.ts`** – Data Contracts, Computations & Default Data
+
+All three concerns are consolidated in a single file per template:
+
 ```typescript
-// Main document interface
+// Interfaces
 export interface DocumentData {
-  meta: MetaInfo;        // Project ref, date, version
-  content: ContentData;  // Main document content
-  company: CompanyInfo;  // Branding, contact details
-  legal: LegalFramework; // Standards, disclaimers
+  meta: MetaInfo;
+  content: ContentData;
+  company: CompanyInfo;
+  legal: LegalFramework;
 }
 
-// Always export computed interfaces
 export interface ComputedDocument {
   data: DocumentData;
-  // Computed values from raw data
   totalNet: number;
   totalGross: number;
   // ... other calculations
 }
-```
 
-**computations.ts** – Pure Logic
-```typescript
-// Main computation function
+// Computation function (replaces old computations.ts)
 export function computeDocument(data: DocumentData): ComputedDocument {
-  // Calculate all derived values
-  // No rendering logic here
+  // All derived values calculated here — no rendering logic
 }
 
-// Utility formatters (Austrian locale)
-export function formatCurrency(amount: number): string;
-export function formatDate(dateString: string): string;
-export function formatNumber(n: number, decimals?: number): string;
+// Default data (replaces old defaultData.ts)
+// Serves as test fixture, API documentation, and onboarding reference
+export const DEFAULT_DOCUMENT: DocumentData = {
+  meta: { projectRef: "DOC-2026-001", date: "2026-03-20", /* ... */ },
+  content: { /* complete, realistic example data */ },
+};
 ```
 
-**{Type}Template.ts** – Rendering Engine
+**`html-template.ts`** – Rendering Engine
+
 ```typescript
-// Helper functions for reusable components
-function pageHeader(data: DocumentData): string;
-function pageFooter(data: DocumentData, page?: number): string;
+import { formatCurrency, formatNumber } from "../../formatters"; // shared utilities
 
-// Page-specific renderers
-function renderCoverPage(data: DocumentData): string;
-function renderContentPage1(data: DocumentData, computed: ComputedDocument): string;
-// ... more pages
+function sharedStyles(): string { /* @page rule + all CSS */ }
+function pageHeader(data: DocumentData): string { /* ... */ }
+function pageFooter(): string { /* hard-coded company data — no parameter */ }
 
-// Shared CSS
-function sharedStyles(): string;
+function renderCoverPage(data: DocumentData): string { /* ... */ }
+function renderContentPage(data: DocumentData, computed: ComputedDocument): string { /* ... */ }
 
-// Main export - assembles everything
 export function generateDocumentHTML(data: DocumentData): string {
   const computed = computeDocument(data);
-  const pages = [
-    renderCoverPage(data),
-    renderContentPage1(data, computed),
-    // ... more pages
-  ];
-  
+  const pages = [renderCoverPage(data), renderContentPage(data, computed)];
   return `<!DOCTYPE html>
 <html lang="de">
 <head>
   <meta charset="utf-8">
   <title>${data.meta.title}</title>
+  <link href="https://fonts.googleapis.com/css2?family=Geist:wght@300;400;500;600;700&display=swap" rel="stylesheet">
   <style>${sharedStyles()}</style>
 </head>
-<body>
-${pages.join("\n")}
-</body>
+<body>${pages.join("\n")}</body>
 </html>`;
 }
 ```
 
+**`index.ts`** – Template Registration
 
-**defaultData.ts** – Living Documentation
 ```typescript
-export const DEFAULT_DOCUMENT: DocumentData = {
-  meta: {
-    projectRef: "DOC-2026-001",
-    date: "2026-03-20",
-    // ...
-  },
-  content: {
-    // Complete, realistic example data
-    // Serves as:
-    // - Test fixture
-    // - API documentation
-    // - Onboarding reference
-  },
-  // ...
-};
+import { registerTemplate } from "../../template-registry";
+import { generateDocumentHTML } from "./html-template";
+import { DEFAULT_DOCUMENT, DocumentDataSchema } from "./types";
+
+registerTemplate({
+  id: "document-type",
+  name: "Human Readable Name",
+  generateHTML: generateDocumentHTML,
+  schema: DocumentDataSchema,
+  exampleData: DEFAULT_DOCUMENT,
+});
+```
+
+**`src/lib/doc-gen/formatters.ts`** – Shared Austrian Formatters
+
+```typescript
+export function formatCurrency(amount: number): string;  // "€ 32.325"
+export function formatNumber(n: number, decimals?: number): string;  // "1.234,56"
 ```
 
 ### 2.3 API Route Pattern
 
-**Basic Route** (`route.ts`)
+The unified platform serves all document types through a single dynamic route. Templates
+are registered in `src/lib/doc-gen/init.ts` via `registerTemplate()` and served through
+`/api/doc-gen/[id]` using the template registry.
+
+**Unified Route** (`src/app/api/doc-gen/[id]/route.ts`)
 ```typescript
 import { NextRequest, NextResponse } from "next/server";
-import { generateDocumentHTML, DEFAULT_DOCUMENT } from "@/lib/{type}";
+import "@/lib/doc-gen/init";  // ensures all templates are registered
+import { getTemplate } from "@/lib/doc-gen/template-registry";
 
-export async function GET() {
-  return NextResponse.json({ message: "API info", endpoints: [...] });
+export async function GET(
+  _req: NextRequest,
+  { params }: { params: { id: string } }
+) {
+  const template = getTemplate(params.id);
+  if (!template) {
+    return NextResponse.json({ error: "Unknown template" }, { status: 404 });
+  }
+  const html = template.generateHTML(template.exampleData);
+  return new NextResponse(html, {
+    headers: { "Content-Type": "text/html; charset=utf-8" },
+  });
 }
 
-export async function POST(request: NextRequest) {
+export async function POST(
+  request: NextRequest,
+  { params }: { params: { id: string } }
+) {
+  const template = getTemplate(params.id);
+  if (!template) {
+    return NextResponse.json({ error: "Unknown template" }, { status: 404 });
+  }
   try {
     const body = await request.json();
-    const data = body.data || DEFAULT_DOCUMENT;
-    const html = generateDocumentHTML(data);
-    
+    const data = template.schema.parse(body.data ?? template.exampleData);
+    const html = template.generateHTML(data);
     return new NextResponse(html, {
       headers: {
         "Content-Type": "text/html; charset=utf-8",
@@ -210,14 +236,12 @@ export async function POST(request: NextRequest) {
 }
 ```
 
-**Preview Route** (`preview/route.ts`)
+**Adding a New Template** — register in `init.ts`:
 ```typescript
-export async function GET() {
-  const html = generateDocumentHTML(DEFAULT_DOCUMENT);
-  return new NextResponse(html, {
-    headers: { "Content-Type": "text/html; charset=utf-8" },
-  });
-}
+// src/lib/doc-gen/init.ts
+import "@/lib/doc-gen/templates/cost-plan";       // calls registerTemplate()
+import "@/lib/doc-gen/templates/baukoordination";  // calls registerTemplate()
+import "@/lib/doc-gen/templates/my-new-type";      // add here
 ```
 
 ---
@@ -1275,42 +1299,34 @@ export function generate{Type}HTML(data: {Type}Document): string {
 
 ### 10.1 Registry Pattern
 
-For unified platform, maintain a document type registry:
+The unified platform maintains a template registry populated at startup via `registerTemplate()`:
 
 ```typescript
-// src/lib/doc-gen/registry.ts
-import { generateKostenplanungHTML } from "@/lib/kostenplanung";
-import { generateBaukoordinationHTML } from "@/lib/baukoordination";
-
-export interface DocumentGenerator {
-  type: string;
+// src/lib/doc-gen/template-registry.ts
+export interface DocumentTemplate<T = unknown> {
+  id: string;
   name: string;
-  description: string;
-  generateHTML: (data: unknown) => string;
-  validateData: (data: unknown) => boolean;
-  exampleData: unknown;
+  generateHTML: (data: T) => string;
+  schema: ZodSchema<T>;
+  exampleData: T;
 }
 
-export const DOCUMENT_GENERATORS: Record<string, DocumentGenerator> = {
-  kostenplanung: {
-    type: "kostenplanung",
-    name: "Kostenplanung",
-    description: "ÖNORM B 1801-1 cost estimation",
-    generateHTML: generateKostenplanungHTML,
-    validateData: (data) => { /* validation */ },
-    exampleData: DEFAULT_KOSTENPLANUNG,
-  },
-  baukoordination: {
-    type: "baukoordination",
-    name: "Baukoordination Angebot",
-    description: "ÖIBA construction coordination proposal",
-    generateHTML: generateBaukoordinationHTML,
-    validateData: (data) => { /* validation */ },
-    exampleData: DEFAULT_BAUKOORDINATION,
-  },
-  // ... future types
-};
+const registry = new Map<string, DocumentTemplate>();
+
+export function registerTemplate<T>(template: DocumentTemplate<T>): void {
+  registry.set(template.id, template as DocumentTemplate);
+}
+
+export function getTemplate(id: string): DocumentTemplate | undefined {
+  return registry.get(id);
+}
+
+export function listTemplates(): DocumentTemplate[] {
+  return Array.from(registry.values());
+}
 ```
+
+Templates self-register when their `index.ts` is imported (see Section 2.3).
 
 ### 10.2 Unified API Interface
 
@@ -1550,7 +1566,7 @@ export async function generateAllFormats(
 
 ### 13.1 Kostenplanung Generator
 
-**Location:** `src/lib/kostenplanung/`
+**Location:** `src/lib/doc-gen/templates/cost-plan/`
 
 **Characteristics:**
 - 8-page A4 document
@@ -1571,7 +1587,7 @@ export async function generateAllFormats(
 
 ### 13.2 Baukoordination Generator
 
-**Location:** `src/lib/baukoordination/`
+**Location:** `src/lib/doc-gen/templates/baukoordination/`
 
 **Characteristics:**
 - 6-page A4 document

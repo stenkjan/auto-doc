@@ -4,26 +4,7 @@ import {
   computeBaukoordination,
   ServicePosition,
 } from "./types";
-
-/* ------------------------------------------------------------------ */
-/*  Formatters                                                          */
-/* ------------------------------------------------------------------ */
-
-function formatCurrency(amount: number): string {
-  return new Intl.NumberFormat("de-AT", {
-    style: "currency",
-    currency: "EUR",
-    minimumFractionDigits: 0,
-    maximumFractionDigits: 0,
-  }).format(amount);
-}
-
-function formatNumber(n: number, decimals = 0): string {
-  return new Intl.NumberFormat("de-AT", {
-    minimumFractionDigits: decimals,
-    maximumFractionDigits: decimals,
-  }).format(n);
-}
+import { formatCurrency, formatNumber } from "../../formatters";
 
 /* ------------------------------------------------------------------ */
 /*  Shared components                                                   */
@@ -399,7 +380,6 @@ function renderLegalPage(data: BaukoordinationAngebot): string {
 
 function sharedStyles(): string {
   return `
-    @import url('https://fonts.googleapis.com/css2?family=Geist:wght@300;400;500;600;700&display=swap');
     @page { size: A4; margin: 18mm 16mm 20mm 16mm; }
     * { box-sizing: border-box; margin: 0; padding: 0; }
     body {
