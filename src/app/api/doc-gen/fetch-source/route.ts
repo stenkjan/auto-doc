@@ -22,7 +22,7 @@ export async function POST(request: NextRequest) {
   }
 
   // Load source config from DB
-  let source: { id: string; type: string; label: string; config: string } | null = null;
+  let source: { id: string; type: string; label: string; config: unknown } | null = null;
   try {
     source = await prisma.source.findUnique({ where: { id: sourceId } });
   } catch (err) {
@@ -36,7 +36,7 @@ export async function POST(request: NextRequest) {
 
   try {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const config = JSON.parse(source.config) as any;
+    const config = source.config as any;
 
     let resources;
     switch (source.type) {

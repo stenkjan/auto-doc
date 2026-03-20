@@ -1,10 +1,13 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest } from "next/server";
 import { requireAdminAuth } from "@/lib/admin-auth";
-import { streamMarkdownDocument, type Resource } from "@/lib/doc-gen/ai-engine";
-import { DEFAULT_MODEL_ID, estimateCostEur } from "@/lib/doc-gen/models";
+import { streamText, type Message } from "ai";
+import { getLanguageModel } from "@/lib/doc-gen/models";
 import { DEFAULT_CONTEXT_ID } from "@/lib/doc-gen/context-registry";
+import { createDocGenTools } from "@/lib/doc-gen/tools";
+import { buildUserMessage, type Resource } from "@/lib/doc-gen/ai-engine";
+import crypto from "crypto";
 
-export const maxDuration = 120;
+export const maxDuration = 300; // Allow 5 minutes for agentic iterative steps
 export const dynamic = "force-dynamic";
 export const fetchCache = "force-no-store";
 export const bodyLimit = "20mb";
@@ -14,78 +17,59 @@ export async function POST(request: NextRequest) {
   if (authError) return authError;
 
   const {
-    prompt,
-    modelId = DEFAULT_MODEL_ID,
+    messages,
+    modelId = "openrouter/free",
     contextId = DEFAULT_CONTEXT_ID,
     existingMarkdown,
     resources,
-  } = await request.json() as {
-    prompt?: string;
+    sessionId,
+  } = (await request.json()) as {
+    messages: Message[];
     modelId?: string;
     contextId?: string;
     existingMarkdown?: string;
     resources?: Resource[];
+    sessionId?: string;
   };
 
-  if (!prompt) {
-    return NextResponse.json({ error: "Prompt is required" }, { status: 400 });
+  if (!messages || messages.length === 0) {
+    return new Response("Messages are required", { status: 400 });
   }
 
-  const encoder = new TextEncoder();
-  const stream = new ReadableStream({
-    async start(controller) {
-      const send = (event: string, data: unknown) => {
-        controller.enqueue(
-          encoder.encode(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`)
-        );
-      };
+  // Generate a stateless session ID if none provided
+  const activeSessionId = sessionId || crypto.randomBytes(8).toString("hex");
 
-      try {
-        const resourceCount = resources?.length ?? 0;
-        send("status", {
-          message: resourceCount > 0
-            ? `Generiere Dokument mit ${resourceCount} Referenz${resourceCount === 1 ? "" : "en"}...`
-            : "Generiere Dokument...",
-        });
+  // Get the latest user message
+  const lastMessage = messages[messages.length - 1];
+  
+  // Build the enhanced prompt including existing markdown and file resources
+  const enhancedPrompt = buildUserMessage(
+    lastMessage.content,
+    existingMarkdown,
+    resources
+  );
 
-        const { markdown, usage } = await streamMarkdownDocument(
-          prompt,
-          modelId,
-          (chunk) => { send("chunk", { text: chunk }); },
-          existingMarkdown,
-          resources,
-          contextId
-        );
+  // Replace the last message with the enhanced one
+  const enhancedMessages = [...messages];
+  enhancedMessages[enhancedMessages.length - 1] = {
+    ...lastMessage,
+    content: enhancedPrompt,
+  };
 
-        // Calculate cost estimate if we have token usage
-        let cost: { formatted: string; inputTokens: number; outputTokens: number } | null = null;
-        if (usage) {
-          const estimate = estimateCostEur(modelId, usage.inputTokens, usage.outputTokens);
-          if (estimate) {
-            cost = {
-              formatted: estimate.formatted,
-              inputTokens: usage.inputTokens,
-              outputTokens: usage.outputTokens,
-            };
-          }
-        }
+  const model = getLanguageModel(modelId);
+  const tools = createDocGenTools(activeSessionId);
 
-        send("complete", { markdown, cost });
-      } catch (error) {
-        send("error", {
-          message: error instanceof Error ? error.message : "Unknown error",
-        });
-      } finally {
-        controller.close();
-      }
-    },
+  // Initialize the stream using the Vercel AI SDK
+  const result = streamText({
+    model,
+    messages: enhancedMessages,
+    tools,
+    maxSteps: 5, // Allow the agent to call tools up to 5 times iteratively
+    system: `Du bist ein hochintelligenter, agentischer Dokumenten-Assistent...
+Greife auf Tools zu um Fakten zu finden!
+Dein Kontext-Token: ${contextId} (wird im Backend geladen, falls nötig).
+`,
   });
 
-  return new NextResponse(stream, {
-    headers: {
-      "Content-Type": "text/event-stream",
-      "Cache-Control": "no-cache",
-      Connection: "keep-alive",
-    },
-  });
+  return result.toDataStreamResponse();
 }

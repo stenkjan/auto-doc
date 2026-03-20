@@ -1,39 +1,19 @@
-import { NextRequest, NextResponse } from "next/server";
-import crypto from "crypto";
+import { auth } from "@/auth";
 
-const COOKIE_NAME = "autodoc-admin-auth";
+export const proxy = auth((req) => {
+  const isLoggedIn = !!req.auth;
+  const isProtected = req.nextUrl.pathname.startsWith("/doc-gen") || req.nextUrl.pathname.startsWith("/admin");
+  const isAuthPage = req.nextUrl.pathname === "/admin/auth" || req.nextUrl.pathname.startsWith("/api/auth");
 
-function getExpectedToken(): string | null {
-  const pw = (process.env.ADMIN_PASSWORD ?? "").trim();
-  if (!pw) return null;
-  return crypto.createHash("sha256").update(pw).digest("hex");
-}
+  // Allow access to auth-related pages without redirecting
+  if (isAuthPage) return;
 
-export function proxy(request: NextRequest) {
-  const { pathname } = request.nextUrl;
-
-  const isAdminRoute = pathname.startsWith("/admin");
-  const isAdminApi = pathname.startsWith("/api/admin");
-  const isAuthPage = pathname === "/admin/auth";
-  const isAuthApi = pathname === "/api/admin/auth";
-
-  if (isAuthPage || isAuthApi) return NextResponse.next();
-
-  if (isAdminRoute || isAdminApi) {
-    const expectedToken = getExpectedToken();
-    const cookie = request.cookies.get(COOKIE_NAME);
-
-    if (!expectedToken || !cookie || cookie.value !== expectedToken) {
-      if (isAdminApi) {
-        return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-      }
-      return NextResponse.redirect(new URL("/admin/auth", request.url));
-    }
+  if (!isLoggedIn && isProtected) {
+    const loginUrl = new URL("/admin/auth", req.nextUrl.origin);
+    return Response.redirect(loginUrl);
   }
-
-  return NextResponse.next();
-}
+});
 
 export const config = {
-  matcher: ["/admin/:path*", "/api/admin/:path*"],
+  matcher: ['/((?!api|_next/static|_next/image|favicon.ico).*)'],
 };

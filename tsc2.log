@@ -1,0 +1,44 @@
+src/app/api/doc-gen/stream/route.ts(3,27): error TS2724: '"ai"' has no exported member named 'Message'. Did you mean 'UIMessage'?
+src/app/api/doc-gen/stream/route.ts(67,5): error TS2353: Object literal may only specify known properties, and 'maxSteps' does not exist in type 'CallSettings & { system?: string | SystemModelMessage | SystemModelMessage[] | undefined; } & { messages: ModelMessage[]; prompt?: undefined; } & { ...; }'.
+src/app/api/doc-gen/stream/route.ts(74,17): error TS2551: Property 'toDataStreamResponse' does not exist on type 'StreamTextResult<{ fetchWebPage: Tool<unknown, unknown>; fetchDriveFile: Tool<unknown, unknown>; fetchGithubRepo: Tool<unknown, unknown>; saveToMemory: Tool<unknown, unknown>; loadFromMemory: Tool<unknown, unknown>; }, Output<string, string, never>>'. Did you mean 'toTextStreamResponse'?
+src/app/doc-gen/page.tsx(388,21): error TS2339: Property 'input' does not exist on type 'UseChatHelpers<UIMessage<unknown, UIDataTypes, UITools>>'.
+src/app/doc-gen/page.tsx(388,28): error TS2339: Property 'handleInputChange' does not exist on type 'UseChatHelpers<UIMessage<unknown, UIDataTypes, UITools>>'.
+src/app/doc-gen/page.tsx(388,47): error TS2339: Property 'handleSubmit' does not exist on type 'UseChatHelpers<UIMessage<unknown, UIDataTypes, UITools>>'.
+src/app/doc-gen/page.tsx(388,61): error TS2339: Property 'isLoading' does not exist on type 'UseChatHelpers<UIMessage<unknown, UIDataTypes, UITools>>'.
+src/app/doc-gen/page.tsx(389,5): error TS2353: Object literal may only specify known properties, and 'api' does not exist in type 'UseChatOptions<UIMessage<unknown, UIDataTypes, UITools>>'.
+src/app/doc-gen/page.tsx(408,96): error TS2339: Property 'content' does not exist on type 'UIMessage<unknown, UIDataTypes, UITools>'.
+src/app/doc-gen/page.tsx(409,50): error TS2339: Property 'content' does not exist on type 'UIMessage<unknown, UIDataTypes, UITools>'.
+src/app/doc-gen/page.tsx(641,22): error TS2339: Property 'content' does not exist on type 'UIMessage<unknown, UIDataTypes, UITools>'.
+src/app/doc-gen/page.tsx(643,26): error TS2339: Property 'content' does not exist on type 'UIMessage<unknown, UIDataTypes, UITools>'.
+src/app/doc-gen/page.tsx(648,22): error TS2339: Property 'content' does not exist on type 'UIMessage<unknown, UIDataTypes, UITools>'.
+src/app/doc-gen/page.tsx(651,28): error TS2339: Property 'content' does not exist on type 'UIMessage<unknown, UIDataTypes, UITools>'.
+src/app/doc-gen/page.tsx(652,31): error TS2339: Property 'content' does not exist on type 'UIMessage<unknown, UIDataTypes, UITools>'.
+src/app/doc-gen/page.tsx(653,31): error TS2339: Property 'content' does not exist on type 'UIMessage<unknown, UIDataTypes, UITools>'.
+src/app/doc-gen/page.tsx(659,22): error TS2339: Property 'toolInvocations' does not exist on type 'UIMessage<unknown, UIDataTypes, UITools>'.
+src/app/doc-gen/page.tsx(659,43): error TS7006: Parameter 'toolInvocation' implicitly has an 'any' type.
+src/lib/doc-gen/ai-engine.ts(5,41): error TS2724: '"ai"' has no exported member named 'Message'. Did you mean 'UIMessage'?
+src/lib/doc-gen/ai-engine.ts(111,5): error TS2353: Object literal may only specify known properties, and 'maxTokens' does not exist in type 'CallSettings & { system?: string | SystemModelMessage | SystemModelMessage[] | undefined; } & { prompt: string | ModelMessage[]; messages?: undefined; } & { ...; }'.
+src/lib/doc-gen/models.ts(167,3): error TS2353: Object literal may only specify known properties, and 'compatibility' does not exist in type 'OpenAIProviderSettings'.
+src/lib/doc-gen/tools.ts(28,7): error TS2769: No overload matches this call.
+  The last overload gave the following error.
+    Type '({ url }: { url: any; }) => Promise<{ success: boolean; name: string; content: string; characterCount: number; error?: undefined; } | { success: boolean; error: string; name?: undefined; content?: undefined; characterCount?: undefined; }>' is not assignable to type 'undefined'.
+src/lib/doc-gen/tools.ts(28,25): error TS7031: Binding element 'url' implicitly has an 'any' type.
+src/lib/doc-gen/tools.ts(56,7): error TS2769: No overload matches this call.
+  The last overload gave the following error.
+    Type '({ fileUrl }: { fileUrl: any; }) => Promise<{ success: boolean; error: string; name?: undefined; content?: undefined; characterCount?: undefined; } | { success: boolean; name: string; content: string; characterCount: number; error?: undefined; }>' is not assignable to type 'undefined'.
+src/lib/doc-gen/tools.ts(56,25): error TS7031: Binding element 'fileUrl' implicitly has an 'any' type.
+src/lib/doc-gen/tools.ts(95,7): error TS2769: No overload matches this call.
+  The last overload gave the following error.
+    Type '({ repoUrl, branch, path }: { repoUrl: any; branch: any; path: any; }) => Promise<{ success: boolean; fileCount: number; files: { name: string; contentPreview: string; totalLength: number; }[]; error?: undefined; } | { success: boolean; error: string; fileCount?: undefined; files?: undefined; }>' is not assignable to type 'undefined'.
+src/lib/doc-gen/tools.ts(95,25): error TS7031: Binding element 'repoUrl' implicitly has an 'any' type.
+src/lib/doc-gen/tools.ts(95,34): error TS7031: Binding element 'branch' implicitly has an 'any' type.
+src/lib/doc-gen/tools.ts(95,42): error TS7031: Binding element 'path' implicitly has an 'any' type.
+src/lib/doc-gen/tools.ts(136,7): error TS2769: No overload matches this call.
+  The last overload gave the following error.
+    Type '({ key, content }: { key: any; content: any; }) => Promise<{ success: boolean; key: string; characterCount: any; error?: undefined; } | { success: boolean; error: string; key?: undefined; characterCount?: undefined; }>' is not assignable to type 'undefined'.
+src/lib/doc-gen/tools.ts(136,25): error TS7031: Binding element 'key' implicitly has an 'any' type.
+src/lib/doc-gen/tools.ts(136,30): error TS7031: Binding element 'content' implicitly has an 'any' type.
+src/lib/doc-gen/tools.ts(162,7): error TS2769: No overload matches this call.
+  The last overload gave the following error.
+    Type '({ key }: { key: any; }) => Promise<{ success: boolean; error: string; entries?: undefined; } | { success: boolean; entries: MemoryEntry[]; error?: undefined; } | { success: boolean; entries: { key: string; contentPreview: string; totalLength: number; }[]; error?: undefined; }>' is not assignable to type 'undefined'.
+src/lib/doc-gen/tools.ts(162,25): error TS7031: Binding element 'key' implicitly has an 'any' type.

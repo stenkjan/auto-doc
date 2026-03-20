@@ -4,19 +4,13 @@ import { useState, useCallback, useEffect, useRef } from "react";
 import dynamic from "next/dynamic";
 import remarkGfm from "remark-gfm";
 import toast from "react-hot-toast";
+import { useChat } from "@ai-sdk/react";
 import { AI_MODELS, DEFAULT_MODEL_ID } from "@/lib/doc-gen/models";
 import { BUILTIN_CONTEXTS, DEFAULT_CONTEXT_ID } from "@/lib/doc-gen/context-registry";
-import type { Resource, PlanMessage, PlanResult } from "@/lib/doc-gen/ai-engine";
+import type { Resource } from "@/lib/doc-gen/ai-engine";
 import { SourcesPanel } from "./_components/SourcesPanel";
 
 const ReactMarkdown = dynamic(() => import("react-markdown"), { ssr: false });
-
-type GenerationStatus = "idle" | "generating" | "streaming" | "done" | "error";
-
-interface GenerationResult {
-  markdown: string;
-  title?: string;
-}
 
 interface ContextEntry {
   id: string;
@@ -30,7 +24,7 @@ const FREE_BADGE = "bg-green-100 text-green-700";
 const PAID_BADGE = "bg-amber-100 text-amber-700";
 
 /* ------------------------------------------------------------------ */
-/*  Context Manager Modal                                               */
+/*  Context Manager Modal (unchanged from previous)                   */
 /* ------------------------------------------------------------------ */
 
 function ContextManagerModal({
@@ -337,49 +331,26 @@ function ContextManagerModal({
 }
 
 /* ------------------------------------------------------------------ */
-/*  Main Page                                                           */
+/*  Main Page - Agentic Chat UI                                         */
 /* ------------------------------------------------------------------ */
 
 export default function DocGenPage() {
-  const [prompt, setPrompt] = useState("");
-  const [status, setStatus] = useState<GenerationStatus>("idle");
-  const [statusMessage, setStatusMessage] = useState("");
-  const [result, setResult] = useState<GenerationResult | null>(null);
-  const [streamingMarkdown, setStreamingMarkdown] = useState("");
   const [selectedModelId, setSelectedModelId] = useState(DEFAULT_MODEL_ID);
   const [showModelPicker, setShowModelPicker] = useState(false);
   const [allContexts, setAllContexts] = useState<ContextEntry[]>(BUILTIN_CONTEXTS);
   const [selectedContextId, setSelectedContextId] = useState(DEFAULT_CONTEXT_ID);
   const [showContextPicker, setShowContextPicker] = useState(false);
   const [showContextManager, setShowContextManager] = useState(false);
-  const [isEditMode, setIsEditMode] = useState(false);
-
-  // --- New Feature States ---
-  const [cost, setCost] = useState<{ formatted: string; inputTokens: number; outputTokens: number } | null>(null);
-
-  // Plan Mode
-  const [isPlanMode, setIsPlanMode] = useState(false);
-  const [planMessages, setPlanMessages] = useState<PlanMessage[]>([]);
-  const [planResult, setPlanResult] = useState<PlanResult | null>(null);
-
-  // PDF Generation
-  const [generatedHtml, setGeneratedHtml] = useState<string | null>(null);
-  const [viewMode, setViewMode] = useState<"markdown" | "html">("markdown");
-
-  // Sources Panel
   const [showSourcesPanel, setShowSourcesPanel] = useState(false);
-  // --------------------------
-
+  
   const [resources, setResources] = useState<(Resource & { warning?: string })[]>([]);
   const [resourceUrl, setResourceUrl] = useState("");
   const [loadingResource, setLoadingResource] = useState(false);
-  const [isDragging, setIsDragging] = useState(false);
 
   const modelPickerRef = useRef<HTMLDivElement>(null);
   const contextPickerRef = useRef<HTMLDivElement>(null);
   const previewRef = useRef<HTMLDivElement>(null);
-  const fileInputRef = useRef<HTMLInputElement>(null);
-  const dropZoneRef = useRef<HTMLDivElement>(null);
+  const messagesEndRef = useRef<HTMLDivElement>(null);
 
   const selectedModel = AI_MODELS.find((m) => m.id === selectedModelId) ?? AI_MODELS[0];
   const selectedContext = allContexts.find((c) => c.id === selectedContextId) ?? allContexts[0];
@@ -412,107 +383,30 @@ export default function DocGenPage() {
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
-  /* ── Plan Mode ────────────────────────────────────────────────── */
+  /* ── Vercel AI SDK Chat Hook ────────────────────────────────────── */
 
-  const runPlan = useCallback(async () => {
-    if (!prompt.trim()) {
-      toast.error("Bitte einen Prompt eingeben");
-      return;
+  const { messages, input, handleInputChange, handleSubmit, isLoading, error } = useChat({
+    api: "/api/doc-gen/stream",
+    body: {
+      modelId: selectedModelId,
+      contextId: selectedContextId,
+      resources: resources.length > 0 ? resources : undefined,
+    },
+    onError: (err) => {
+      toast.error(err.message || "Fehler bei der Generierung");
+    },
+  });
+
+  // Auto-scroll chat
+  useEffect(() => {
+    if (messagesEndRef.current) {
+      messagesEndRef.current.scrollIntoView({ behavior: "smooth" });
     }
+  }, [messages]);
 
-    setStatus("generating");
-    setStatusMessage("Analysiere Anfrage und plane...");
-    
-    try {
-      const res = await fetch("/api/doc-gen/plan", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          prompt,
-          modelId: selectedModelId,
-          contextId: selectedContextId,
-          priorMessages: planMessages.length > 0 ? planMessages : undefined,
-          resources: resources.length > 0 ? resources : undefined,
-        }),
-      });
-
-      const json = await res.json();
-      if (!res.ok) throw new Error(json.error ?? "Fehler im Plan-Modus");
-      
-      const newPlan = json.planResult as PlanResult;
-      setPlanResult(newPlan);
-      
-      setPlanMessages(prev => [
-        ...prev, 
-        { role: "user", content: prompt },
-        { role: "assistant", content: JSON.stringify(newPlan) }
-      ]);
-      
-      setPrompt("");
-      setStatus("done");
-      setStatusMessage("");
-      
-      if (newPlan.ready) {
-        toast.success("Planung abgeschlossen! Du kannst nun generieren.");
-      } else {
-        toast.success("Rückfragen erhalten.");
-      }
-      
-    } catch (error) {
-       setStatus("error");
-       const msg = error instanceof Error ? error.message : "Unbekannter Fehler";
-       setStatusMessage(msg);
-       toast.error(msg);
-    }
-  }, [prompt, selectedModelId, selectedContextId, planMessages, resources]);
-
-  /* ── PDF Generation ───────────────────────────────────────────── */
-
-  const generateStyledPdf = useCallback(async () => {
-     let finalPrompt = prompt.trim();
-     if (isPlanMode && planResult?.ready) {
-       finalPrompt = `Bitte erstelle das Dokument exakt nach diesem Plan in HTML:\n\n${planResult.proposal}`;
-     }
-
-     if (!finalPrompt && !isEditMode && !result?.markdown) {
-        toast.error("Bitte einen Text generieren oder Prompt eingeben");
-        return;
-     }
-
-     setStatus("generating");
-     setStatusMessage("Erstelle formatiertes HTML-Design für PDF...");
-     setViewMode("html");
-     setGeneratedHtml(null);
-
-     try {
-        const res = await fetch("/api/doc-gen/generate-pdf", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-             prompt: finalPrompt || "Formatiere das angezeigte Dokument in perfektes HTML für PDF-Druck.",
-             modelId: selectedModelId,
-             contextId: selectedContextId,
-             resources: resources.length > 0 ? resources : undefined,
-             existingMarkdown: result?.markdown,
-          })
-        });
-
-        const json = await res.json();
-        if (!res.ok) throw new Error(json.error ?? "PDF generation failed");
-
-        setGeneratedHtml(json.html);
-        setStatus("done");
-        setStatusMessage("");
-        toast.success("Design geladen! PDF kann jetzt geladen werden.");
-     } catch(err) {
-        setStatus("error");
-        const msg = err instanceof Error ? err.message : "Unbekannter Fehler";
-        setStatusMessage(msg);
-        toast.error(msg);
-        setViewMode("markdown");
-     }
-
-  }, [prompt, isEditMode, result, selectedModelId, selectedContextId, resources]);
+  // Extract the latest markdown from assistant messages for the preview panel
+  const latestAssistantMessage = [...messages].reverse().find(m => m.role === "assistant" && m.content.length > 0);
+  const latestMarkdown = latestAssistantMessage?.content || "";
 
   /* ── Resource loading ─────────────────────────────────────────── */
 
@@ -542,206 +436,83 @@ export default function DocGenPage() {
     }
   }, [resourceUrl]);
 
-  const uploadFile = useCallback(async (file: File) => {
-    setLoadingResource(true);
-    try {
-      const formData = new FormData();
-      formData.append("file", file);
-      const res = await fetch("/api/doc-gen/fetch-resource", {
-        method: "POST",
-        body: formData,
-      });
-      const json = await res.json();
-      if (!res.ok) throw new Error(json.error ?? "Fehler beim Hochladen");
-      const resource = json as Resource & { warning?: string };
-      setResources((prev) => [...prev, resource]);
-      if (resource.warning) {
-        toast.error(`"${resource.name}" – ${resource.warning}`);
-      } else {
-        toast.success(`"${resource.name}" geladen`);
-      }
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Fehler beim Hochladen");
-    } finally {
-      setLoadingResource(false);
-    }
-  }, []);
-
-  const handleFileChange = useCallback(
-    (e: React.ChangeEvent<HTMLInputElement>) => {
-      const files = Array.from(e.target.files ?? []);
-      files.forEach(uploadFile);
-      e.target.value = "";
-    },
-    [uploadFile]
-  );
-
-  const handleDrop = useCallback(
-    (e: React.DragEvent) => {
-      e.preventDefault();
-      setIsDragging(false);
-      const files = Array.from(e.dataTransfer.files);
-      files.forEach(uploadFile);
-    },
-    [uploadFile]
-  );
-
-  const removeResource = useCallback((index: number) => {
-    setResources((prev) => prev.filter((_, i) => i !== index));
-  }, []);
-
-  /* ── Generation ───────────────────────────────────────────────── */
-
-  const generate = useCallback(async () => {
-    let finalPrompt = prompt.trim();
-    if (isPlanMode && planResult?.ready) {
-      finalPrompt = `Bitte erstelle das Dokument exakt nach diesem Plan:\n\n${planResult.proposal}`;
-    }
-
-    if (!finalPrompt) {
-      toast.error("Bitte einen Prompt eingeben");
-      return;
-    }
-
-    setStatus("streaming");
-    setStatusMessage("Generiere Dokument...");
-    setStreamingMarkdown("");
-    if (!isEditMode) setResult(null);
-
-    const existingMarkdown = isEditMode ? result?.markdown : undefined;
-
-    try {
-      const res = await fetch("/api/doc-gen/stream", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          prompt: finalPrompt,
-          modelId: selectedModelId,
-          contextId: selectedContextId,
-          existingMarkdown,
-          resources: resources.length > 0 ? resources : undefined,
-        }),
-      });
-
-      if (!res.ok) {
-        const errJson = await res.json();
-        throw new Error(errJson.error ?? "Generation failed");
-      }
-
-      const reader = res.body?.getReader();
-      const decoder = new TextDecoder();
-      if (!reader) throw new Error("No response stream");
-
-      let buffer = "";
-      let accumulated = "";
-
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        buffer += decoder.decode(value, { stream: true });
-        const lines = buffer.split("\n");
-        buffer = lines.pop() ?? "";
-
-        let currentEvent = "";
-        for (const line of lines) {
-          if (line.startsWith("event: ")) {
-            currentEvent = line.slice(7).trim();
-          } else if (line.startsWith("data: ") && currentEvent) {
-            try {
-              const eventData = JSON.parse(line.slice(6));
-              if (currentEvent === "status") {
-                setStatusMessage(eventData.message);
-              } else if (currentEvent === "chunk") {
-                accumulated += eventData.text;
-                setStreamingMarkdown(accumulated);
-              } else if (currentEvent === "complete") {
-                const finalMarkdown = eventData.markdown
-                  .replace(/^```[a-z]*\s*/i, "")
-                  .replace(/\s*```$/i, "")
-                  .trim();
-                setResult({ markdown: finalMarkdown });
-                if (eventData.cost) setCost(eventData.cost);
-                setStreamingMarkdown("");
-                setStatus("done");
-                setStatusMessage("");
-                setPrompt("");
-                setIsEditMode(false);
-                setPlanMessages([]); // Reset plan mode once generated
-                setPlanResult(null);
-                toast.success("Dokument generiert!");
-              } else if (currentEvent === "error") {
-                throw new Error(eventData.message);
-              }
-            } catch (parseError) {
-              if (
-                parseError instanceof Error &&
-                parseError.message !== "Unexpected end of JSON input"
-              ) {
-                throw parseError;
-              }
-            }
-            currentEvent = "";
-          }
-        }
-      }
-    } catch (error) {
-      setStatus("error");
-      const msg = error instanceof Error ? error.message : "Unbekannter Fehler";
-      setStatusMessage(msg);
-      toast.error(msg);
-      setStreamingMarkdown("");
-    }
-  }, [prompt, selectedModelId, selectedContextId, isEditMode, result, resources]);
+  /* ── PDF Export ───────────────────────────────────────────────── */
 
   const downloadPDF = useCallback(async () => {
     if (!previewRef.current) return;
     try {
       const html2pdf = (await import("html2pdf.js")).default;
-      const filename = result?.title
-        ? `${result.title.replace(/[^a-zA-Z0-9äöüÄÖÜß\s-]/g, "").trim()}.pdf`
-        : `Dokument-${Date.now()}.pdf`;
-      html2pdf()
+      const filename = `Dokument-${Date.now()}.pdf`;
+      toast.success("PDF wird generiert...");
+      
+      const element = previewRef.current;
+      // Temporary styling for print
+      const originalStyle = element.style.cssText;
+      element.style.padding = '0';
+      element.style.height = 'auto';
+      element.style.overflow = 'visible';
+
+      await html2pdf()
         .set({
           margin: [15, 15, 15, 15],
           filename,
           html2canvas: { scale: 2, useCORS: true },
           jsPDF: { unit: "mm", format: "a4", orientation: "portrait" },
         })
-        .from(previewRef.current)
+        .from(element)
         .save();
-      toast.success("PDF wird heruntergeladen...");
+        
+      // Restore styles
+      element.style.cssText = originalStyle;
+      toast.success("PDF erfolgreich gespeichert");
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "PDF-Erzeugung fehlgeschlagen");
     }
-  }, [result]);
+  }, []);
 
-  const downloadHtmlAsPdf = useCallback(async () => {
-    if (!generatedHtml) return;
-    try {
-      const html2pdf = (await import("html2pdf.js")).default;
-      const element = document.createElement("div");
-      element.innerHTML = generatedHtml;
-      toast.success("Erstelle PDF...");
-      html2pdf()
-        .set({
-          margin: [0, 0, 0, 0],
-          filename: `Styled-Dokument-${Date.now()}.pdf`,
-          html2canvas: { scale: 2, useCORS: true, letterRendering: true },
-          jsPDF: { unit: "mm", format: "a4", orientation: "portrait" },
-        })
-        .from(element)
-        .save()
-        .then(() => toast.success("PDF gespeichert!"));
-    } catch(err) {
-       toast.error("PDF-Download fehlgeschlagen");
+  const printDocument = useCallback(() => {
+    if (!previewRef.current) return;
+    const printWindow = window.open('', '_blank');
+    if (!printWindow) {
+      toast.error("Popup-Blocker verhindert das Drucken.");
+      return;
     }
-  }, [generatedHtml]);
 
-  const isRunning = status === "generating" || status === "streaming";
-  const displayMarkdown = isRunning ? streamingMarkdown : result?.markdown ?? "";
+    const html = `
+      <html>
+        <head>
+          <title>Dokument Drucken</title>
+          <style>
+            body { font-family: system-ui, -apple-system, sans-serif; padding: 20px; line-height: 1.6; color: #111; max-width: 800px; margin: 0 auto; }
+            h1, h2, h3 { color: #000; }
+            code { background: #f4f4f4; padding: 2px 4px; border-radius: 4px; }
+            pre { background: #f4f4f4; padding: 15px; border-radius: 8px; overflow-x: auto; }
+            table { border-collapse: collapse; width: 100%; margin-bottom: 1em; }
+            th, td { border: 1px solid #ddd; padding: 8px; text-align: left; }
+            th { background-color: #f8f9fa; }
+            @media print {
+              body { padding: 0; }
+              @page { margin: 2cm; }
+            }
+          </style>
+        </head>
+        <body class="prose prose-blue max-w-none">
+          ${previewRef.current.innerHTML}
+        </body>
+      </html>
+    `;
+
+    printWindow.document.write(html);
+    printWindow.document.close();
+    // Wait for styling to apply before triggering print dialog
+    setTimeout(() => {
+      printWindow.focus();
+      printWindow.print();
+    }, 250);
+  }, []);
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-gray-50 flex flex-col">
       {/* Context Manager Modal */}
       {showContextManager && (
         <ContextManagerModal
@@ -751,580 +522,300 @@ export default function DocGenPage() {
       )}
 
       {/* Header */}
-      <header className="bg-white border-b border-gray-200 px-6 py-4">
-        <div className="max-w-7xl mx-auto flex items-center justify-between">
+      <header className="bg-white border-b border-gray-200 px-6 py-3 shrink-0">
+        <div className="max-w-[1600px] mx-auto flex items-center justify-between">
           <div>
-            <h1 className="text-xl font-bold text-gray-900">Dokumentengenerator</h1>
-            <p className="text-sm text-gray-500">AI-gestützte Dokumentenerstellung</p>
+            <h1 className="text-xl font-bold text-gray-900">Agentic Prompt Machine</h1>
+            <p className="text-sm text-gray-500">AI-gestützte iterierende Dokumentenerstellung</p>
           </div>
-          <div className="flex items-center gap-4">
+          <div className="flex items-center gap-6">
+            
+            {/* Context Selector mini */}
+            <div className="relative text-sm" ref={contextPickerRef}>
+              <button
+                onClick={() => setShowContextPicker(p => !p)}
+                className="flex items-center gap-2 px-3 py-1.5 border border-gray-200 rounded-lg bg-gray-50 hover:bg-gray-100 transition-colors"
+              >
+                <span className="text-gray-500">Kontext:</span>
+                <span className="font-medium text-gray-800">{selectedContext?.label}</span>
+                <svg className="w-4 h-4 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" /></svg>
+              </button>
+              {showContextPicker && (
+                <div className="absolute right-0 top-full mt-1 z-50 w-64 bg-white border border-gray-200 rounded-xl shadow-lg max-h-72 overflow-y-auto">
+                   <div className="px-3 py-2 border-b border-gray-100 flex justify-between items-center bg-gray-50">
+                     <span className="text-xs font-semibold text-gray-400 uppercase">Kontexte</span>
+                     <button onClick={() => setShowContextManager(true)} className="text-xs text-blue-600 hover:underline">Verwalten</button>
+                   </div>
+                   {allContexts.map(c => (
+                     <button
+                       key={c.id}
+                       onClick={() => { setSelectedContextId(c.id); setShowContextPicker(false); }}
+                       className={`w-full text-left px-4 py-2 hover:bg-gray-50 text-sm ${selectedContextId === c.id ? 'bg-blue-50 font-medium' : ''}`}
+                     >
+                       {c.label} {c.custom && <span className="ml-2 text-[10px] bg-purple-100 text-purple-700 px-1.5 py-0.5 rounded">Custom</span>}
+                     </button>
+                   ))}
+                </div>
+              )}
+            </div>
+
+            {/* Model Selector mini */}
+            <div className="relative text-sm" ref={modelPickerRef}>
+              <button
+                onClick={() => setShowModelPicker(p => !p)}
+                className="flex items-center gap-2 px-3 py-1.5 border border-gray-200 rounded-lg bg-gray-50 hover:bg-gray-100 transition-colors"
+              >
+                <span className="text-gray-500">Modell:</span>
+                <span className="font-medium text-gray-800">{selectedModel.label}</span>
+                <svg className="w-4 h-4 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" /></svg>
+              </button>
+              {showModelPicker && (
+                <div className="absolute right-0 top-full mt-1 z-50 w-72 bg-white border border-gray-200 rounded-xl shadow-lg max-h-72 overflow-y-auto">
+                   {AI_MODELS.map(m => (
+                     <button
+                       key={m.id}
+                       onClick={() => { setSelectedModelId(m.id); setShowModelPicker(false); }}
+                       className={`w-full text-left px-4 py-2 hover:bg-gray-50 text-sm ${selectedModelId === m.id ? 'bg-blue-50 font-medium' : ''}`}
+                     >
+                       <div className="flex justify-between items-center">
+                         <span>{m.label}</span>
+                         <span className={`text-[10px] px-1.5 py-0.5 rounded ${m.paid ? PAID_BADGE : FREE_BADGE}`}>{m.paid ? 'Paid' : 'Free'}</span>
+                       </div>
+                     </button>
+                   ))}
+                </div>
+              )}
+            </div>
+
             <button
               onClick={() => setShowSourcesPanel(true)}
               className="flex items-center gap-1.5 px-3 py-1.5 bg-indigo-50 text-indigo-700 rounded-lg text-sm font-medium hover:bg-indigo-100 transition-colors border border-indigo-200"
             >
-              <span>⚡</span> Quellen
+              <span>⚡</span> Externe Quellen
             </button>
-            <span
-              className={`text-xs px-2 py-1 rounded-full font-medium ${
-                status === "done"
-                  ? "bg-green-100 text-green-700"
-                  : status === "error"
-                    ? "bg-red-100 text-red-700"
-                    : isRunning
-                      ? "bg-blue-100 text-blue-700"
-                      : "bg-gray-100 text-gray-500"
-              }`}
-            >
-              {status === "idle" ? "Bereit" : status === "done" ? "Fertig" : status === "error" ? "Fehler" : "Läuft..."}
-            </span>
           </div>
         </div>
       </header>
 
-      <div className="max-w-7xl mx-auto p-6">
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          {/* Left panel */}
-          <div className="lg:col-span-1 space-y-4">
+      {/* Main Split Interface */}
+      <div className="flex-1 flex overflow-hidden max-w-[1600px] w-full mx-auto p-4 gap-4">
+        
+        {/* LEFT: Agentic Chat */}
+        <div className="w-[450px] shrink-0 bg-white rounded-xl border border-gray-200 shadow-sm flex flex-col overflow-hidden">
+          <div className="p-3 border-b border-gray-100 bg-gray-50 text-sm font-semibold text-gray-700 flex justify-between items-center">
+            <span>Agent Chat</span>
+            <span className="text-xs font-normal text-gray-500 px-2 py-0.5 bg-gray-200 rounded-full">{isLoading ? 'Denkt nach...' : 'Bereit'}</span>
+          </div>
 
-            {/* Prompt card */}
-            <div className="bg-white rounded-xl border border-gray-200 p-5 shadow-sm space-y-4">
-              <div className="flex items-center justify-between">
-                <h2 className="text-sm font-semibold text-gray-700">
-                  {isEditMode ? "Dokument bearbeiten" : "Neues Dokument"}
-                </h2>
-                <label className="flex items-center gap-2 cursor-pointer bg-gray-50 px-2 py-1 rounded-lg border border-gray-200">
-                  <span className="text-xs font-medium text-gray-600">Plan-Modus</span>
-                  <input
-                    type="checkbox"
-                    checked={isPlanMode}
-                    onChange={(e) => setIsPlanMode(e.target.checked)}
-                    className="w-3.5 h-3.5 rounded border-gray-300 text-blue-600 focus:ring-blue-500 cursor-pointer"
-                  />
-                </label>
-              </div>
-
-              {isEditMode && (
-                <div className="flex items-center gap-2 px-3 py-2 bg-amber-50 border border-amber-200 rounded-lg">
-                  <span className="text-xs text-amber-700 font-medium">Bearbeitungsmodus aktiv</span>
-                  <button
-                    type="button"
-                    onClick={() => setIsEditMode(false)}
-                    className="ml-auto text-xs text-amber-600 hover:text-amber-800 underline"
-                  >
-                    Abbrechen
-                  </button>
-                </div>
-              )}
-
-              {/* Context picker */}
-              <div className="relative" ref={contextPickerRef}>
-                <div className="flex items-center justify-between mb-1.5">
-                  <p className="text-xs font-medium text-gray-500">Kontext</p>
-                  <button
-                    type="button"
-                    onClick={() => setShowContextManager(true)}
-                    className="text-xs text-blue-600 hover:text-blue-800 transition-colors"
-                  >
-                    Verwalten
-                  </button>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => setShowContextPicker((v) => !v)}
-                  className="w-full flex items-center justify-between gap-2 border border-gray-300 rounded-lg px-3 py-2.5 text-left hover:border-gray-400 transition-colors bg-white"
-                >
-                  <div className="min-w-0">
-                    <div className="flex items-center gap-2">
-                      {selectedContext?.custom && (
-                        <span className="text-xs px-1.5 py-0.5 rounded font-medium bg-purple-100 text-purple-700 shrink-0">
-                          Eigens
-                        </span>
-                      )}
-                      <span className="text-sm font-medium text-gray-900 truncate">
-                        {selectedContext?.label ?? "Allgemein"}
-                      </span>
-                    </div>
-                    <p className="text-xs text-gray-400 mt-0.5 truncate">
-                      {selectedContext?.description ?? ""}
-                    </p>
+          {/* Resources Mini-Panel */}
+          {resources.length > 0 && (
+            <div className="px-3 py-2 bg-blue-50/50 border-b border-blue-100 max-h-32 overflow-y-auto">
+              <span className="text-xs font-medium text-blue-800 mb-1 block">Angehängte Dateien:</span>
+              <div className="flex flex-wrap gap-1.5">
+                {resources.map((r, i) => (
+                  <div key={i} className="flex items-center gap-1 text-xs bg-white border border-blue-200 text-blue-700 px-2 py-1 rounded">
+                    <span className="truncate max-w-[150px]">{r.name}</span>
+                    <button onClick={() => setResources(prev => prev.filter((_, idx) => idx !== i))} className="text-blue-400 hover:text-red-500">×</button>
                   </div>
-                  <svg
-                    className={`w-4 h-4 text-gray-400 shrink-0 transition-transform ${showContextPicker ? "rotate-180" : ""}`}
-                    fill="none" viewBox="0 0 24 24" stroke="currentColor"
-                  >
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-                  </svg>
-                </button>
-
-                {showContextPicker && (
-                  <div className="absolute z-40 left-0 right-0 top-full mt-1 bg-white border border-gray-200 rounded-xl shadow-lg overflow-hidden max-h-72 overflow-y-auto">
-                    {allContexts.length === 0 ? (
-                      <p className="text-xs text-gray-400 px-3 py-3">Keine Kontexte verfügbar</p>
-                    ) : (
-                      <>
-                        {/* Built-in */}
-                        <div className="px-3 py-1.5 bg-gray-50 border-b border-gray-100">
-                          <span className="text-xs font-semibold text-gray-400 uppercase tracking-wide">Eingebaut</span>
-                        </div>
-                        {allContexts.filter((c) => !c.custom).map((ctx) => (
-                          <button
-                            key={ctx.id}
-                            type="button"
-                            onClick={() => { setSelectedContextId(ctx.id); setShowContextPicker(false); }}
-                            className={`w-full text-left px-3 py-2.5 hover:bg-gray-50 transition-colors border-b border-gray-100 last:border-0 ${selectedContextId === ctx.id ? "bg-blue-50" : ""}`}
-                          >
-                            <span className="text-sm font-medium text-gray-900 block">{ctx.label}</span>
-                            <p className="text-xs text-gray-400 mt-0.5">{ctx.description}</p>
-                            {selectedContextId === ctx.id && (
-                              <span className="text-xs text-blue-600 font-medium">Ausgewählt</span>
-                            )}
-                          </button>
-                        ))}
-                        {/* Custom */}
-                        {allContexts.some((c) => c.custom) && (
-                          <>
-                            <div className="px-3 py-1.5 bg-gray-50 border-b border-gray-100 border-t border-gray-200">
-                              <span className="text-xs font-semibold text-gray-400 uppercase tracking-wide">Eigene</span>
-                            </div>
-                            {allContexts.filter((c) => c.custom).map((ctx) => (
-                              <button
-                                key={ctx.id}
-                                type="button"
-                                onClick={() => { setSelectedContextId(ctx.id); setShowContextPicker(false); }}
-                                className={`w-full text-left px-3 py-2.5 hover:bg-gray-50 transition-colors border-b border-gray-100 last:border-0 ${selectedContextId === ctx.id ? "bg-blue-50" : ""}`}
-                              >
-                                <div className="flex items-center gap-2">
-                                  <span className="text-xs px-1.5 py-0.5 rounded font-medium bg-purple-100 text-purple-700 shrink-0">Eigens</span>
-                                  <span className="text-sm font-medium text-gray-900">{ctx.label}</span>
-                                </div>
-                                <p className="text-xs text-gray-400 mt-0.5">{ctx.description}</p>
-                                {selectedContextId === ctx.id && (
-                                  <span className="text-xs text-blue-600 font-medium">Ausgewählt</span>
-                                )}
-                              </button>
-                            ))}
-                          </>
-                        )}
-                      </>
-                    )}
-                  </div>
-                )}
-              </div>
-
-              {isPlanMode && planMessages.length > 0 && (
-                <div className="bg-slate-50 border border-slate-200 rounded-lg p-3 space-y-3 mb-2 max-h-60 overflow-y-auto">
-                  {planMessages.map((msg, idx) => (
-                    <div key={idx} className={`text-sm ${msg.role === 'user' ? 'text-right' : ''}`}>
-                      {msg.role === 'assistant' ? (
-                        <div className="text-slate-800 bg-white p-2 rounded border border-slate-100 space-y-2">
-                          {(() => {
-                             try {
-                               const p = JSON.parse(msg.content) as PlanResult;
-                               return (
-                                 <>
-                                   <div className="flex items-start gap-2">
-                                     <span className="text-blue-500 mt-0.5">💡</span>
-                                     <p className="text-xs">{p.interpretation}</p>
-                                   </div>
-                                   {p.questions.length > 0 && (
-                                     <div className="bg-orange-50 text-orange-800 p-2 rounded text-xs border border-orange-100">
-                                       <span className="font-semibold block mb-1">Rückfragen:</span>
-                                       <ul className="list-disc pl-4 space-y-0.5">
-                                         {p.questions.map((q, qidx) => <li key={qidx}>{q}</li>)}
-                                       </ul>
-                                     </div>
-                                   )}
-                                   {p.proposal && (
-                                     <div className="text-xs text-slate-500 italic mt-1 border-t border-slate-100 pt-1">
-                                       " {p.proposal} "
-                                     </div>
-                                   )}
-                                   {p.ready && (
-                                     <div className="text-xs text-green-600 font-medium flex items-center gap-1 mt-1">
-                                       <span>✓</span> Plan bereit zur Generierung
-                                     </div>
-                                   )}
-                                 </>
-                               )
-                             } catch {
-                               return <span className="text-xs">{msg.content}</span>;
-                             }
-                          })()}
-                        </div>
-                      ) : (
-                        <div className="bg-blue-100 text-blue-800 p-2 rounded inline-block text-left text-xs max-w-[85%] border border-blue-200">
-                           {msg.content}
-                        </div>
-                      )}
-                    </div>
-                  ))}
-                </div>
-              )}
-
-              <textarea
-                value={prompt}
-                onChange={(e) => setPrompt(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
-                     if (isPlanMode && !planResult?.ready) runPlan();
-                     else generate();
-                  }
-                }}
-                placeholder={
-                  isEditMode
-                    ? "Was soll geändert werden?"
-                    : isPlanMode && planMessages.length > 0 && !planResult?.ready
-                    ? "Antworte auf die Rückfragen..."
-                    : selectedContextId === "cost-plan"
-                      ? "Erstelle eine Kostenplanung für Projekt Arlberg mit 2 Grundstücken und 3 Haustypen..."
-                      : selectedContextId === "summary"
-                        ? "Fasse das hochgeladene Dokument zusammen und hebe die wichtigsten Punkte hervor..."
-                        : "Was soll erstellt werden?"
-                }
-                className="w-full h-32 px-3 py-2 border border-gray-300 rounded-lg text-sm resize-none focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-              />
-
-              {/* Model picker */}
-              <div className="relative" ref={modelPickerRef}>
-                <p className="text-xs font-medium text-gray-500 mb-1.5">Modell</p>
-                <button
-                  type="button"
-                  onClick={() => setShowModelPicker((v) => !v)}
-                  className="w-full flex items-center justify-between gap-2 border border-gray-300 rounded-lg px-3 py-2.5 text-left hover:border-gray-400 transition-colors bg-white"
-                >
-                  <div className="min-w-0">
-                    <div className="flex items-center gap-2">
-                      <span className={`text-xs px-1.5 py-0.5 rounded font-medium shrink-0 ${selectedModel.paid ? PAID_BADGE : FREE_BADGE}`}>
-                        {selectedModel.paid ? "Bezahlt" : "Kostenlos"}
-                      </span>
-                      <span className="text-sm font-medium text-gray-900 truncate">
-                        {selectedModel.label}
-                      </span>
-                    </div>
-                    <p className="text-xs text-gray-400 mt-0.5 truncate">{selectedModel.description}</p>
-                  </div>
-                  <svg
-                    className={`w-4 h-4 text-gray-400 shrink-0 transition-transform ${showModelPicker ? "rotate-180" : ""}`}
-                    fill="none" viewBox="0 0 24 24" stroke="currentColor"
-                  >
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-                  </svg>
-                </button>
-
-                {showModelPicker && (
-                  <div className="absolute z-40 left-0 right-0 top-full mt-1 bg-white border border-gray-200 rounded-xl shadow-lg overflow-hidden max-h-80 overflow-y-auto">
-                    <div className="px-3 py-1.5 bg-gray-50 border-b border-gray-100">
-                      <span className="text-xs font-semibold text-gray-400 uppercase tracking-wide">Kostenlos</span>
-                    </div>
-                    {AI_MODELS.filter((m) => !m.paid).map((model) => (
-                      <button
-                        key={model.id}
-                        type="button"
-                        onClick={() => { setSelectedModelId(model.id); setShowModelPicker(false); }}
-                        className={`w-full text-left px-3 py-2.5 hover:bg-gray-50 transition-colors border-b border-gray-100 last:border-0 ${selectedModelId === model.id ? "bg-blue-50" : ""}`}
-                      >
-                        <div className="flex items-center justify-between gap-2">
-                          <span className="text-sm font-medium text-gray-900">{model.label}</span>
-                          <span className="text-xs text-gray-400 shrink-0">{model.contextWindow} ctx</span>
-                        </div>
-                        <p className="text-xs text-gray-400 mt-0.5">{model.description}</p>
-                        {selectedModelId === model.id && <span className="text-xs text-blue-600 font-medium">Ausgewählt</span>}
-                      </button>
-                    ))}
-                    <div className="px-3 py-1.5 bg-gray-50 border-b border-gray-100 border-t border-gray-200">
-                      <span className="text-xs font-semibold text-gray-400 uppercase tracking-wide">Bezahlt (bessere Qualität)</span>
-                    </div>
-                    {AI_MODELS.filter((m) => m.paid).map((model) => (
-                      <button
-                        key={model.id}
-                        type="button"
-                        onClick={() => { setSelectedModelId(model.id); setShowModelPicker(false); }}
-                        className={`w-full text-left px-3 py-2.5 hover:bg-gray-50 transition-colors border-b border-gray-100 last:border-0 ${selectedModelId === model.id ? "bg-blue-50" : ""}`}
-                      >
-                        <div className="flex items-center justify-between gap-2">
-                          <span className="text-sm font-medium text-gray-900">{model.label}</span>
-                          <span className="text-xs text-gray-400 shrink-0">{model.contextWindow} ctx</span>
-                        </div>
-                        <p className="text-xs text-gray-400 mt-0.5">{model.description}</p>
-                        {selectedModelId === model.id && <span className="text-xs text-blue-600 font-medium">Ausgewählt</span>}
-                      </button>
-                    ))}
-                  </div>
-                )}
-              </div>
-
-              <div className="flex gap-2">
-                 {isPlanMode && !planResult?.ready ? (
-                   <>
-                     <button
-                       onClick={runPlan}
-                       disabled={isRunning}
-                       className="flex-1 bg-slate-800 text-white py-2 px-4 rounded-lg text-sm font-medium hover:bg-slate-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-                     >
-                       {isRunning ? "Analysiere..." : planMessages.length > 0 ? "Antworten" : "Planen"}
-                     </button>
-                     {planMessages.length > 0 && (
-                       <button
-                         onClick={() => {
-                           setPlanResult(prev => prev ? { ...prev, ready: true } : null);
-                           setTimeout(() => generate(), 0);
-                         }}
-                         disabled={isRunning}
-                         className="shrink-0 bg-blue-600 text-white py-2 px-4 rounded-lg text-sm font-medium hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-                         title="Rückfragen überspringen und direkt generieren"
-                       >
-                         Start
-                       </button>
-                     )}
-                   </>
-                 ) : (
-                   <button
-                     onClick={generate}
-                     disabled={isRunning}
-                     className="w-full bg-blue-600 text-white py-2 px-4 rounded-lg text-sm font-medium hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-                   >
-                     {isRunning ? "Generiert..." : isEditMode ? "Anpassen" : "Generieren"}
-                   </button>
-                 )}
-              </div>
-
-              {statusMessage && (
-                <p className={`text-xs ${status === "error" ? "text-red-600" : "text-blue-600"}`}>
-                  {statusMessage}
-                </p>
-              )}
-              <div className="flex items-center justify-between text-xs text-gray-400">
-                <p>Tipp: Ctrl+Enter zum Starten</p>
-                {cost && (
-                  <p className="flex items-center gap-1 font-medium text-slate-500" title={`In: ${cost.inputTokens} | Out: ${cost.outputTokens}`}>
-                    <span className="text-slate-400">💰</span> ~{cost.formatted}
-                  </p>
-                )}
+                ))}
               </div>
             </div>
+          )}
 
-            {/* Resources card */}
-            <div className="bg-white rounded-xl border border-gray-200 p-5 shadow-sm space-y-3">
-              <div className="flex items-center justify-between">
-                <h2 className="text-sm font-semibold text-gray-700">Referenzen</h2>
-                {resources.length > 0 && (
-                  <span className="text-xs bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded-full font-medium">
-                    {resources.length}
-                  </span>
-                )}
+          {/* Messages Container */}
+          <div className="flex-1 overflow-y-auto p-4 space-y-6">
+            {messages.length === 0 ? (
+              <div className="text-center text-gray-400 text-sm mt-10">
+                <p className="text-4xl mb-3">💬</p>
+                <p>Starte die Konversation.</p>
+                <p className="text-xs mt-1">Du kannst URLs in den Chat posten, der Agent kann diese lesen.</p>
               </div>
-
-              <div>
-                <p className="text-xs font-medium text-gray-500 mb-1.5">Link laden</p>
-                <div className="flex gap-2">
-                  <input
-                    type="text"
-                    value={resourceUrl}
-                    onChange={(e) => setResourceUrl(e.target.value)}
-                    onKeyDown={(e) => { if (e.key === "Enter") loadDriveResource(); }}
-                    placeholder="https://... (beliebige URL oder Google Drive)"
-                    className="flex-1 min-w-0 px-3 py-2 border border-gray-300 rounded-lg text-xs focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                  />
-                  <button
-                    type="button"
-                    onClick={loadDriveResource}
-                    disabled={!resourceUrl.trim() || loadingResource}
-                    className="shrink-0 bg-blue-600 text-white px-3 py-2 rounded-lg text-xs font-medium hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-                  >
-                    {loadingResource ? "..." : "Laden"}
-                  </button>
-                </div>
-                <p className="text-xs text-gray-400 mt-1">Webseiten, Artikel, Google Docs/Sheets, Drive-Dateien</p>
-              </div>
-
-              <div>
-                <p className="text-xs font-medium text-gray-500 mb-1.5">Datei hochladen</p>
-                <div
-                  ref={dropZoneRef}
-                  onDragOver={(e) => { e.preventDefault(); setIsDragging(true); }}
-                  onDragLeave={() => setIsDragging(false)}
-                  onDrop={handleDrop}
-                  onClick={() => fileInputRef.current?.click()}
-                  className={`border-2 border-dashed rounded-lg px-4 py-5 text-center cursor-pointer transition-colors ${
-                    isDragging ? "border-blue-400 bg-blue-50" : "border-gray-200 hover:border-gray-300 hover:bg-gray-50"
-                  }`}
-                >
-                  {loadingResource ? (
-                    <p className="text-xs text-blue-600">Wird verarbeitet...</p>
-                  ) : (
-                    <>
-                      <p className="text-xs font-medium text-gray-600">Datei hierher ziehen</p>
-                      <p className="text-xs text-gray-400 mt-0.5">oder klicken zum Auswählen</p>
-                      <p className="text-xs text-gray-300 mt-1">PDF, DOCX, TXT, MD, CSV, JSON</p>
-                    </>
+            ) : (
+              messages.map(m => (
+                <div key={m.id} className={`flex flex-col ${m.role === 'user' ? 'items-end' : 'items-start'}`}>
+                  {m.role === 'assistant' && (
+                    <span className="text-xs font-medium text-blue-600 mb-1 ml-1">AI Assistant</span>
                   )}
-                </div>
-                <input
-                  ref={fileInputRef}
-                  type="file"
-                  multiple
-                  accept=".pdf,.docx,.txt,.md,.csv,.json,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,text/*"
-                  onChange={handleFileChange}
-                  className="hidden"
-                />
-              </div>
+                  
+                  {/* Text Content */}
+                  {m.content && m.role === 'user' && (
+                    <div className="bg-blue-600 text-white rounded-2xl rounded-tr-sm px-4 py-2 max-w-[85%] text-sm shadow-sm whitespace-pre-wrap">
+                      {m.content}
+                    </div>
+                  )}
 
-              {resources.length > 0 && (
-                <div className="space-y-1.5">
-                  <p className="text-xs font-medium text-gray-500">Geladen</p>
-                  {resources.map((r, i) => {
-                    const hasWarning = !!r.warning;
+                  {/* Assistant response - mostly hidden in chat if it's the final doc, but visible briefly */}
+                  {m.content && m.role === 'assistant' && (
+                    <div className="bg-gray-100 text-gray-800 rounded-2xl rounded-tl-sm px-4 py-2 max-w-[95%] text-sm shadow-sm prose prose-sm prose-blue">
+                      <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                        {m.content.length > 300 && m === messages[messages.length-1] 
+                          ? m.content.substring(0, 300) + "...\n\n_(Gesamtes Dokument im rechten Panel)_"
+                          : m.content}
+                      </ReactMarkdown>
+                    </div>
+                  )}
+
+                  {/* Tool Call Indicators */}
+                  {m.toolInvocations?.map(toolInvocation => {
+                    const toolCallId = toolInvocation.toolCallId;
+                    const toolName = toolInvocation.toolName;
+                    
                     return (
-                      <div
-                        key={i}
-                        className={`flex items-start gap-2 px-3 py-2 border rounded-lg ${
-                          hasWarning ? "bg-amber-50 border-amber-200" : "bg-green-50 border-green-200"
-                        }`}
-                      >
-                        <span className={`text-xs shrink-0 mt-0.5 ${hasWarning ? "text-amber-500" : "text-green-600"}`}>
-                          {hasWarning ? "⚠" : "✓"}
-                        </span>
-                        <div className="flex-1 min-w-0">
-                          <span className={`text-xs font-medium truncate block ${hasWarning ? "text-amber-800" : "text-green-800"}`}>
-                            {r.name}
-                          </span>
-                          {hasWarning && (
-                            <span className="text-xs text-amber-600 block mt-0.5 leading-snug">{r.warning}</span>
+                      <div key={toolCallId} className="mt-2 text-xs text-gray-500 bg-gray-50 border border-gray-100 rounded-lg p-2 max-w-[95%] w-full flex flex-col gap-1">
+                        <div className="flex items-center gap-2 font-medium">
+                          {toolName === 'fetchWebPage' && <span>🌐 Rufe URL ab...</span>}
+                          {toolName === 'fetchDriveFile' && <span>📁 Lade Drive Datei...</span>}
+                          {toolName === 'fetchGithubRepo' && <span>🐙 Lese GitHub Repo...</span>}
+                          {toolName === 'saveToMemory' && <span>💾 Speichere ins Gedächtnis...</span>}
+                          {toolName === 'loadFromMemory' && <span>🧠 Lade aus Gedächtnis...</span>}
+                          
+                          {'result' in toolInvocation ? (
+                             <span className="text-green-600 ml-auto">✓ Fertig</span>
+                          ) : (
+                             <span className="text-blue-600 animate-pulse ml-auto">Lädt...</span>
                           )}
                         </div>
-                        <span className={`text-xs shrink-0 ${hasWarning ? "text-amber-500" : "text-green-500"}`}>
-                          {(Math.round(r.content.length / 100) / 10).toFixed(1)}k
-                        </span>
-                        <button
-                          type="button"
-                          onClick={() => removeResource(i)}
-                          className={`text-xs shrink-0 transition-colors ml-1 ${hasWarning ? "text-amber-400 hover:text-red-500" : "text-green-400 hover:text-red-500"}`}
-                          title="Entfernen"
-                        >
-                          ✕
-                        </button>
+                        
+                        {/* Show arguments briefly */}
+                        <div className="font-mono text-[10px] text-gray-400 truncate opacity-70">
+                          {JSON.stringify(toolInvocation.args)}
+                        </div>
+
+                        {/* Show result briefly if available */}
+                        {'result' in toolInvocation && (
+                          <div className="font-mono text-[10px] text-gray-400 truncate mt-1 pt-1 border-t border-gray-100">
+                            Result: {JSON.stringify(toolInvocation.result).substring(0, 100)}...
+                          </div>
+                        )}
                       </div>
                     );
                   })}
-                  <button
-                    type="button"
-                    onClick={() => setResources([])}
-                    className="text-xs text-gray-400 hover:text-red-500 transition-colors"
-                  >
-                    Alle entfernen
-                  </button>
                 </div>
-              )}
-            </div>
-
-            {/* Export + Edit panel */}
-            {result !== null && (
-              <div className="bg-white rounded-xl border border-gray-200 p-5 shadow-sm space-y-2">
-                <h2 className="text-sm font-semibold text-gray-700 mb-3">Aktionen</h2>
-                <div className="grid grid-cols-2 gap-2">
-                  <button
-                    onClick={downloadPDF}
-                    disabled={isRunning}
-                    className="w-full bg-gray-900 text-white py-2 px-2 rounded-lg text-xs font-medium hover:bg-gray-800 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-                  >
-                    Raw PDF (Markdown)
-                  </button>
-                  <button
-                    onClick={generateStyledPdf}
-                    disabled={isRunning}
-                    className="w-full bg-indigo-600 text-white py-2 px-2 rounded-lg text-xs font-medium hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-                  >
-                    Design PDF (AI)
-                  </button>
-                </div>
-                {generatedHtml && viewMode === "html" && (
-                  <button
-                    onClick={downloadHtmlAsPdf}
-                    disabled={isRunning}
-                    className="w-full bg-indigo-900 text-white py-2 px-4 rounded-lg text-sm font-medium hover:bg-indigo-800 disabled:opacity-50 disabled:cursor-not-allowed transition-colors mt-2"
-                  >
-                    Design PDF herunterladen
-                  </button>
-                )}
-                <button
-                  onClick={() => { setIsEditMode(true); setPrompt(""); }}
-                  disabled={isRunning}
-                  className="w-full mt-2 bg-blue-50 text-blue-700 border border-blue-200 py-2 px-4 rounded-lg text-sm font-medium hover:bg-blue-100 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-                >
-                  Dokument bearbeiten
-                </button>
-                {result.title && (
-                  <p className="pt-1 text-xs text-gray-400">{result.title}</p>
-                )}
-              </div>
+              ))
             )}
+            
+            {error && (
+               <div className="bg-red-50 text-red-600 border border-red-200 p-3 rounded-xl text-sm">
+                 Fehler: {error.message}
+               </div>
+            )}
+            
+            <div ref={messagesEndRef} />
           </div>
 
-          {/* Right panel: Markdown/HTML Preview */}
-          <div className="lg:col-span-2">
-            <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden flex flex-col" style={{ height: "calc(100vh - 120px)" }}>
-              <div className="px-5 py-3 border-b border-gray-200 flex items-center justify-between shrink-0">
-                <div className="flex items-center gap-4">
-                  <h2 className="text-sm font-semibold text-gray-700">Vorschau</h2>
-                  {result !== null && !isRunning && (
-                    <div className="flex bg-gray-100 p-0.5 rounded-lg border border-gray-200">
-                      <button
-                        onClick={() => setViewMode("markdown")}
-                        className={`text-xs px-3 py-1 rounded-md font-medium transition-colors ${viewMode === "markdown" ? "bg-white shadow text-gray-900" : "text-gray-500 hover:text-gray-700"}`}
-                      >
-                        Inhalt
-                      </button>
-                      <button
-                        onClick={() => setViewMode("html")}
-                        disabled={!generatedHtml}
-                        className={`text-xs px-3 py-1 rounded-md font-medium transition-colors ${viewMode === "html" ? "bg-white shadow text-indigo-700" : "text-gray-500 hover:text-gray-700 disabled:opacity-50"}`}
-                      >
-                        Design
-                      </button>
-                    </div>
-                  )}
-                </div>
-                
-                {isRunning && (
-                  <span className="flex items-center gap-1.5 text-xs text-blue-600">
-                    <span className="inline-block w-1.5 h-1.5 rounded-full bg-blue-600 animate-pulse" />
-                    Generiert live...
-                  </span>
-                )}
-              </div>
+          {/* Quick Actions */}
+          <div className="px-3 pb-2 flex gap-2">
+             <input
+                type="text"
+                placeholder="URL hier laden..."
+                value={resourceUrl}
+                onChange={e => setResourceUrl(e.target.value)}
+                onKeyDown={e => { if (e.key === "Enter") loadDriveResource(); }}
+                className="flex-1 text-xs px-2 py-1.5 focus:outline-none border border-gray-200 rounded bg-gray-50"
+             />
+             <button
+               onClick={loadDriveResource}
+               disabled={!resourceUrl || loadingResource}
+               className="text-xs bg-gray-200 hover:bg-gray-300 text-gray-700 font-medium px-3 py-1.5 rounded disabled:opacity-50"
+             >
+               {loadingResource ? 'Lädt...' : 'Anhängen'}
+             </button>
+             <button
+                onClick={() => document.getElementById('file-upload')?.click()}
+                className="text-xs bg-gray-200 hover:bg-gray-300 text-gray-700 font-medium px-3 py-1.5 rounded"
+             >
+               + Datei
+             </button>
+             <input id="file-upload" type="file" className="hidden" multiple onChange={async (e) => {
+                const files = e.target.files;
+                if (!files) return;
+                setLoadingResource(true);
+                for (let i = 0; i < files.length; i++) {
+                   const formData = new FormData();
+                   formData.append("file", files[i]);
+                   try {
+                     const res = await fetch("/api/doc-gen/fetch-resource", { method: "POST", body: formData });
+                     const json = await res.json();
+                     if (res.ok) setResources(p => [...p, json]);
+                     else toast.error(json.error || "Fehler beim Upload");
+                   } catch { toast.error("Upload fehlgeschlagen"); }
+                }
+                setLoadingResource(false);
+             }} />
+          </div>
 
-              <div className="flex-1 overflow-hidden relative">
-                {viewMode === "html" && generatedHtml ? (
-                  <iframe
-                    srcDoc={generatedHtml}
-                    className="w-full h-full border-0 bg-white"
-                    title="PDF Design Preview"
-                  />
-                ) : displayMarkdown ? (
-                  <div
-                    ref={previewRef}
-                    id="markdown-preview"
-                    className="prose prose-blue max-w-none p-8 overflow-auto h-full"
-                  >
-                    <ReactMarkdown remarkPlugins={[remarkGfm]}>
-                      {displayMarkdown}
-                    </ReactMarkdown>
-                  </div>
-                ) : (
-                  <div className="flex items-center justify-center text-gray-400 text-sm h-full">
-                    <div className="text-center space-y-2">
-                      <p className="text-4xl">📄</p>
-                      <p>Gib einen Prompt ein und klicke &quot;Generieren&quot;</p>
-                      <p className="text-xs text-gray-300">Das Dokument erscheint hier während der Generierung</p>
-                    </div>
-                  </div>
-                )}
-              </div>
+          {/* Chat Input */}
+          <div className="p-3 bg-white border-t border-gray-200">
+            <form onSubmit={handleSubmit} className="relative">
+              <textarea
+                value={input}
+                onChange={handleInputChange}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' && !e.shiftKey) {
+                    e.preventDefault();
+                    if (input.trim() && !isLoading) {
+                      const form = e.target as HTMLTextAreaElement;
+                      form.form?.dispatchEvent(new Event('submit', { cancelable: true, bubbles: true }));
+                    }
+                  }
+                }}
+                placeholder={isLoading ? "Agent arbeitet..." : "Beschreibe das Dokument oder frage den Agenten... (Shift+Enter für neue Zeile)"}
+                disabled={isLoading}
+                className="w-full h-24 pl-3 pr-12 py-3 border border-gray-300 focus:border-blue-500 rounded-xl text-sm resize-none focus:outline-none focus:ring-1 focus:ring-blue-500 shadow-sm disabled:opacity-50"
+              />
+              <button
+                type="submit"
+                disabled={!input.trim() || isLoading}
+                className="absolute right-2 bottom-3 bg-blue-600 text-white p-2 rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:bg-gray-300 transition-colors shadow-sm"
+              >
+                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
+                </svg>
+              </button>
+            </form>
+          </div>
+        </div>
+
+        {/* RIGHT: Live Preview */}
+        <div className="flex-1 bg-white rounded-xl border border-gray-200 shadow-sm flex flex-col min-w-0">
+          <div className="px-5 py-3 border-b border-gray-100 bg-gray-50 flex items-center justify-between">
+            <h2 className="text-sm font-semibold text-gray-700 flex items-center gap-2">
+              <span>📄</span> Live Vorschau
+              {isLoading && <span className="flex w-2 h-2 rounded-full bg-blue-500 animate-pulse ml-2"></span>}
+            </h2>
+            <div className="flex items-center gap-2">
+              <button onClick={printDocument} className="text-xs px-3 py-1.5 border border-gray-300 rounded hover:bg-gray-100 font-medium text-gray-700">
+                Drucken (Browser)
+              </button>
+              <button onClick={downloadPDF} className="text-xs px-3 py-1.5 bg-gray-900 text-white rounded hover:bg-gray-800 font-medium flex items-center gap-1.5">
+                PDF Export
+              </button>
+            </div>
+          </div>
+          
+          <div className="flex-1 overflow-auto bg-gray-100/30 p-8 relative">
+            <div className="max-w-4xl mx-auto min-h-full bg-white shadow-sm border border-gray-200 p-10 print:p-0 print:border-0 print:shadow-none print:bg-transparent">
+              {latestMarkdown ? (
+                <div ref={previewRef} className="prose prose-blue max-w-none text-slate-800 break-words dark:prose-invert">
+                  <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                    {latestMarkdown}
+                  </ReactMarkdown>
+                </div>
+              ) : (
+                <div className="text-center text-gray-300 mt-20 flex flex-col items-center">
+                  <svg className="w-16 h-16 mb-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                  </svg>
+                  <p className="font-medium text-gray-400">Das generierte Dokument erscheint hier</p>
+                  <p className="text-sm mt-1">Starte eine Unterhaltung im Agent Chat auf der linken Seite.</p>
+                </div>
+              )}
             </div>
           </div>
         </div>
       </div>
 
+      {/* Sources Panel hidden modal */}
       <SourcesPanel
         open={showSourcesPanel}
         onClose={() => setShowSourcesPanel(false)}

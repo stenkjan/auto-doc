@@ -10,11 +10,7 @@ export async function GET(request: NextRequest) {
     const sources = await prisma.source.findMany({
       orderBy: { createdAt: "desc" },
     });
-    const parsedSources = sources.map((s: { id: string; type: string; label: string; config: string; enabled: boolean; createdAt: Date; updatedAt: Date }) => ({
-      ...s,
-      config: JSON.parse(s.config),
-    }));
-    return NextResponse.json({ sources: parsedSources });
+    return NextResponse.json({ sources });
   } catch (err) {
     console.error("[sources] GET Fehler:", err);
     return NextResponse.json({ error: "Fehler beim Laden der Quellen" }, { status: 500 });
@@ -48,9 +44,9 @@ export async function POST(request: NextRequest) {
 
   try {
     const source = await prisma.source.create({
-      data: { type, label, config: JSON.stringify(config), enabled },
+      data: { type, label, config: config as any, enabled },
     });
-    return NextResponse.json({ source: { ...source, config } }, { status: 201 });
+    return NextResponse.json({ source }, { status: 201 });
   } catch (err) {
     console.error("[sources] POST Fehler:", err);
     return NextResponse.json({ error: "Fehler beim Erstellen der Quelle" }, { status: 500 });
@@ -68,18 +64,15 @@ export async function PATCH(request: NextRequest) {
     return NextResponse.json({ error: "Ungültiger JSON-Body" }, { status: 400 });
   }
 
-  const { id, config, ...restUpdates } = body;
+  const { id, ...updates } = body;
   if (!id) return NextResponse.json({ error: "id ist erforderlich" }, { status: 400 });
-
-  const updates: any = { ...restUpdates };
-  if (config) updates.config = JSON.stringify(config);
 
   try {
     const source = await prisma.source.update({
       where: { id },
-      data: updates,
+      data: updates as any,
     });
-    return NextResponse.json({ source: { ...source, config: JSON.parse(source.config) } });
+    return NextResponse.json({ source });
   } catch (err) {
     console.error("[sources] PATCH Fehler:", err);
     return NextResponse.json({ error: "Fehler beim Aktualisieren der Quelle" }, { status: 500 });

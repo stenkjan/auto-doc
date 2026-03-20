@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { signIn } from "next-auth/react";
 import { useRouter } from "next/navigation";
 
 export default function AdminAuthPage() {
@@ -9,22 +10,22 @@ export default function AdminAuthPage() {
   const [loading, setLoading] = useState(false);
   const router = useRouter();
 
+
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setLoading(true);
     setError("");
 
     try {
-      const res = await fetch("/api/admin/auth", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ password }),
+      const res = await signIn("credentials", {
+        password,
+        redirect: false,
       });
 
-      if (res.ok) {
-        router.push("/admin/doc-gen");
-      } else {
+      if (res?.error) {
         setError("Falsches Passwort");
+      } else if (res?.ok) {
+        router.push("/doc-gen");
       }
     } catch {
       setError("Verbindungsfehler");

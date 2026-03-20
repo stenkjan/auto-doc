@@ -3,8 +3,9 @@ generator client {
 }
 
 datasource db {
-  provider = "sqlite"
-  url      = env("DATABASE_URL")
+  provider          = "postgresql"
+  url               = env("DATABASE_URL")
+  directUrl         = env("DIRECT_URL")
 }
 
 model GeneratedDocument {
@@ -13,8 +14,8 @@ model GeneratedDocument {
   templateType  String
   title         String
   prompt        String
-  inputData     String
-  generatedData String
+  inputData     Json
+  generatedData Json
   createdBy     String   @default("admin")
   driveFileId   String?
   driveUrl      String?
@@ -31,7 +32,7 @@ model Source {
   id        String   @id @default(cuid())
   type      String   // "github" | "mcp" | "drive"
   label     String
-  config    String   // type-specific config (url, token, folderId, etc.) stored as JSON string
+  config    Json     // type-specific config (url, token, folderId, etc.)
   enabled   Boolean  @default(true)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt

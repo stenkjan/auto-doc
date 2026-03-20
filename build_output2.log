@@ -1,0 +1,37 @@
+
+> auto-doc@1.0.0 build
+> next build
+
+▲ Next.js 16.1.6 (Turbopack)
+- Environments: .env.local, .env
+
+  Creating an optimized production build ...
+
+> Build error occurred
+Error: Turbopack build failed with 1 errors:
+./src/app/doc-gen/page.tsx:7:1
+Module not found: Can't resolve 'ai/react'
+[0m [90m  5 |[39m [36mimport[39m remarkGfm [36mfrom[39m [32m"remark-gfm"[39m[33m;[39m
+ [90m  6 |[39m [36mimport[39m toast [36mfrom[39m [32m"react-hot-toast"[39m[33m;[39m
+[31m[1m>[22m[39m[90m  7 |[39m [36mimport[39m { useChat } [36mfrom[39m [32m"ai/react"[39m[33m;[39m
+ [90m    |[39m [31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m
+ [90m  8 |[39m [36mimport[39m { [33mAI_MODELS[39m[33m,[39m [33mDEFAULT_MODEL_ID[39m } [36mfrom[39m [32m"@/lib/doc-gen/models"[39m[33m;[39m
+ [90m  9 |[39m [36mimport[39m { [33mBUILTIN_CONTEXTS[39m[33m,[39m [33mDEFAULT_CONTEXT_ID[39m } [36mfrom[39m [32m"@/lib/doc-gen/context-registry"[39m[33m;[39m
+ [90m 10 |[39m [36mimport[39m type { [33mResource[39m } [36mfrom[39m [32m"@/lib/doc-gen/ai-engine"[39m[33m;[39m[0m
+
+
+
+Import traces:
+  Client Component Browser:
+    ./src/app/doc-gen/page.tsx [Client Component Browser]
+    ./src/app/doc-gen/page.tsx [Server Component]
+
+  Client Component SSR:
+    ./src/app/doc-gen/page.tsx [Client Component SSR]
+    ./src/app/doc-gen/page.tsx [Server Component]
+
+https://nextjs.org/docs/messages/module-not-found
+
+
+    at <unknown> (./src/app/doc-gen/page.tsx:7:1)
+    at <unknown> (https://nextjs.org/docs/messages/module-not-found)

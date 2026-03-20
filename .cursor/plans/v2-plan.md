@@ -1,12 +1,12 @@
 ---
 name: AI Document Generator Platform v2 ("Agentic Prompt Machine")
-overview: Migration der bestehenden starren JSON/HTML-Dokumentengenerierung zu einer agentischen, iterativen "Prompt Machine". Die Architektur nutzt das Vercel AI SDK mit `tools` und `maxSteps`, um externe Datenquellen (Google Drive, GitHub) iterativ abzufragen. Ergebnisse werden in einem lokalen "Write-Ahead"-Memory (Markdown) zwischengespeichert. Das Frontend bietet eine Split-Screen-UI (Chat links, Live-Markdown-Preview rechts). Das Layout wird global über Tailwind Typography gesteuert, der PDF-Export erfolgt ressourcenschonend clientseitig.
+overview: Migration der bestehenden starren JSON/HTML-Dokumentengenerierung zu einer agentischen, iterativen "Prompt Machine". Die Architektur nutzt das Vercel AI SDK mit `tools` und `maxSteps`, um externe Datenquellen iterativ abzufragen. Ergebnisse werden in einem Cloud-basierten "Write-Ahead"-Memory (S3/Blob/DB-basiertes MD-Storage) zwischengespeichert. Das Frontend bietet eine Split-Screen-UI. Das Layout wird global über Tailwind Typography gesteuert, der PDF-Export erfolgt clientseitig.
 todos:
   - id: cleanup
     content: "Phase 0: Bereinigung der Codebase (Entfernen von Puppeteer, @sparticuz/chromium und der strikten JSON-Schema-Zwingung aus der AI-Engine)."
     status: pending
   - id: memory-system
-    content: "Phase 1: Implementierung des 'Write-Ahead' Memory-Systems (lokales Speichern von abgerufenen API-Daten als strukturierte Markdown-Dateien im Workspace)."
+    content: "Phase 1: Implementierung des cloud-basierten 'Write-Ahead' Memory-Systems (Speichern von abgerufenen API-Daten als strukturierte Markdown-Dateien in S3/Blob oder der Postgres-DB)."
     status: pending
   - id: agentic-engine
     content: "Phase 2: Umbau der `ai-engine.ts` zur Nutzung des Vercel AI SDKs mit `tools` (API-Anbindungen) und `maxSteps` (für den iterativen 'Cursor-Effekt')."
@@ -42,7 +42,7 @@ flowchart TD
 
     subgraph memoryLayer [Context & Memory]
         Rules["Regel-Engine\n(global-rules.md)"]
-        LocalMemory["Lokales Memory\n(Write-Ahead MD Storage)"]
+        CloudMemory["Cloud Memory\n(Vercel Blob / Postgres MD Storage)"]
     end
 
     subgraph renderLayer [Rendering & Export]
@@ -52,10 +52,10 @@ flowchart TD
 
     ChatUI -->|"Prompt"| Claude
     Rules -->|"System Prompt"| Claude
-    LocalMemory -->|"Lade existierenden Kontext"| Claude
+    CloudMemory -->|"Lade existierenden Kontext"| Claude
     
     Claude <-->|"braucht Daten"| Tools
-    Tools -->|"schreibe Zusammenfassung"| LocalMemory
+    Tools -->|"schreibe Zusammenfassung"| CloudMemory
     Claude <-->|"muss Daten berechnen"| Sandbox
 
     Claude -->|"Generiertes Markdown"| MarkdownEngine

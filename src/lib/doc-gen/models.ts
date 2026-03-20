@@ -1,3 +1,7 @@
+import { createAnthropic } from "@ai-sdk/anthropic";
+import { createOpenAI } from "@ai-sdk/openai";
+import type { LanguageModel } from "ai";
+
 export type AIProvider = "openrouter" | "anthropic";
 
 export interface ModelPricing {
@@ -147,4 +151,43 @@ export function estimateCostEur(
       ? "< € 0,001"
       : `€ ${eur.toFixed(4).replace(".", ",")}`;
   return { usd, eur, formatted };
+}
+
+/* ------------------------------------------------------------------ */
+/*  Vercel AI SDK Language Model Provider                               */
+/* ------------------------------------------------------------------ */
+
+const anthropicProvider = createAnthropic({
+  apiKey: process.env.ANTHROPIC_API_KEY ?? "",
+});
+
+const openRouterProvider = createOpenAI({
+  apiKey: process.env.OPENROUTER_API_KEY ?? "",
+  baseURL: "https://openrouter.ai/api/v1",
+  compatibility: "compatible",
+  headers: {
+    "HTTP-Referer": "https://hoam-house.com",
+    "X-Title": "Auto Doc Generator",
+  },
+});
+
+/**
+ * Get a Vercel AI SDK LanguageModel instance for a given model ID.
+ */
+export function getLanguageModel(modelId: string): LanguageModel {
+  const model = getModel(modelId);
+  if (!model) throw new Error(`Unbekanntes Modell: ${modelId}`);
+
+  if (model.provider === "anthropic") {
+    const actualId = model.id.replace(/^anthropic\//, "");
+    return anthropicProvider(actualId);
+  }
+
+  // OpenRouter: strip the "openrouter/" prefix for the API call
+  const OPENROUTER_ALIASES = ["openrouter/free", "openrouter/auto"];
+  const actualModel = OPENROUTER_ALIASES.includes(model.id)
+    ? model.id
+    : model.id.replace(/^openrouter\//, "");
+
+  return openRouterProvider(actualModel);
 }
