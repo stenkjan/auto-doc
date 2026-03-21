@@ -1097,6 +1097,13 @@ Quality Checks:
 - Add proper disclaimers
 - Cite relevant norms and standards
 
+### 7.4 Prompt Caching Strategy (Vercel AI SDK)
+
+To massively reduce AI token costs and TTFT (Time-To-First-Token) during iterative agentic loops (`maxSteps`), we strictly implement **Anthropic Prompt Caching**:
+- **Static Context First**: `global-rules`, permissions, and extensive context files are passed in the `system` array with a `providerOptions: { anthropic: { cacheControl: { type: 'ephemeral' } } }` breakpoint.
+- **Large References**: Gathered context, uploaded files, and huge Markdown structures (`existingMarkdown`) in the `user` message also receive an `ephemeral` breakpoint.
+- **Dynamic Content Last**: The active user query and dynamic tool calls are always appended at the very end to prevent cache invalidation.
+
 ---
 
 ## 8. Quality Assurance Checklist
