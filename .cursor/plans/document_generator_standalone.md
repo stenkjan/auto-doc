@@ -1,6 +1,6 @@
 # DOCUMENT_GENERATOR — Ausführbares Agent-Blueprint
 
-**Version:** 1.1.0 · **Sprache:** Deutsch/Englisch · **Ausgabe:** Standalone HTML → PDF
+**Version:** 1.2.0 · **Sprache:** Deutsch/Englisch · **Ausgabe:** Standalone HTML → PDF
 
 ---
 
@@ -950,7 +950,15 @@ ZAHLENPRÜFUNG      ✅ Alle Summen korrekt  / ❌ [Korrektur vorgenommen]
 
 ## PHASE 5 — PDF-LIEFERUNG
 
-### 5.1 Browser öffnen
+> Erkenne zuerst welche Fähigkeiten dir zur Verfügung stehen:
+> - **Browser-Modus** (Cursor / Antigravity): Du hast `browser_navigate` und `browser_screenshot` Tools → folge **5A**
+> - **Code-Only-Modus** (nur Datei-Schreibzugriff, kein Browser-Tool): → folge **5B**
+
+---
+
+### 5A — Browser-Modus (Cursor / Antigravity mit Browser-MCP)
+
+#### 5A.1 Browser öffnen
 
 ```
 1. Verwende browser_navigate mit dem absoluten Dateipfad:
@@ -961,7 +969,7 @@ ZAHLENPRÜFUNG      ✅ Alle Summen korrekt  / ❌ [Korrektur vorgenommen]
 3. Erstelle Screenshot mit browser_screenshot
 ```
 
-### 5.2 Visuelle Qualitätskontrolle
+#### 5A.2 Visuelle Qualitätskontrolle
 
 Prüfe im Screenshot:
 - [ ] Deckblatt vollständig sichtbar, kein abgeschnittener Text
@@ -970,24 +978,82 @@ Prüfe im Screenshot:
 - [ ] Keine `[Platzhalter]`-Texte sichtbar
 - [ ] Keine offensichtlichen Overflow-Probleme
 
-### 5.3 Fehler beheben
+#### 5A.3 Fehler beheben
 
 Bei Problemen → HTML-Datei mit StrReplace fixen → browser_navigate neu laden → erneut screenshot.
 
-### 5.4 Nutzer informieren
+#### 5A.4 Nutzer informieren
 
 Gib nach erfolgreichem Screenshot folgende Anweisung aus:
 
 ```
 ✅ Dokument erstellt: generated-docs/[slug].html
+   Das Dokument ist im Browser geöffnet.
 
 PDF speichern:
-1. Die Seite ist bereits im Browser geöffnet
-2. Drücke Ctrl+P (Windows) oder Cmd+P (Mac)
-3. Ziel/Drucker: "Als PDF speichern" oder "Microsoft Print to PDF"
-4. Papierformat: A4 · Ränder: Keine (oder Standard)
-5. Hintergrundgrafiken: ✓ aktivieren
-6. Auf "Speichern" klicken
+1. Drücke Ctrl+P (Windows) oder Cmd+P (Mac)
+2. Ziel/Drucker: "Als PDF speichern" oder "Microsoft Print to PDF"
+3. Papierformat: A4 · Ränder: Keine (oder Standard)
+4. Hintergrundgrafiken: ✓ aktivieren
+5. Auf "Speichern" klicken
+```
+
+---
+
+### 5B — Code-Only-Modus (kein Browser-Tool verfügbar)
+
+> Verwende diesen Pfad wenn du ausschließlich Dateien schreiben kannst und KEINE Browser-Tools (`browser_navigate`, `browser_screenshot`) hast.
+
+#### 5B.1 HTML-Datei speichern
+
+Die Datei wurde bereits geschrieben unter `generated-docs/[slug].html`. Teile dem Nutzer mit:
+
+```
+✅ HTML-Dokument wurde erstellt: generated-docs/[slug].html
+
+So öffnest du es im Browser und speicherst es als PDF:
+
+──────────────────────────────────────────────────
+SCHRITT 1 — HTML-Datei direkt öffnen
+──────────────────────────────────────────────────
+Die einfachste Methode:
+Gehe in deinem Datei-Explorer zu:
+  [Pfad]/generated-docs/[slug].html
+
+Doppelklick auf die Datei → öffnet sich direkt im Browser.
+→ Weiter mit Schritt 3.
+
+──────────────────────────────────────────────────
+ALTERNATIV: Datei aus dem Editor speichern
+(falls du den Code aus dem Chat kopiert hast)
+──────────────────────────────────────────────────
+SCHRITT 1A — Code in Editor einfügen
+  Öffne einen Texteditor (z.B. Notepad, VS Code, Notepad++)
+  Füge den generierten HTML-Code vollständig ein.
+
+SCHRITT 1B — Speichern als HTML
+  Klicke: Datei → Speichern unter
+  Dateityp:  "Alle Dateien" (nicht "Textdateien")
+  Dateiname: [slug].html
+             ↑ Wichtig: .html am Ende schreiben!
+  Speicherort: Beliebig (z.B. Desktop)
+  → Speichern klicken.
+
+──────────────────────────────────────────────────
+SCHRITT 2 — Im Browser öffnen
+──────────────────────────────────────────────────
+  Doppelklick auf die gespeicherte .html-Datei
+  → öffnet sich in deinem Standard-Browser (Chrome, Edge, Firefox)
+
+──────────────────────────────────────────────────
+SCHRITT 3 — Als PDF speichern
+──────────────────────────────────────────────────
+  Drücke: Ctrl+P (Windows) oder Cmd+P (Mac)
+  Drucker/Ziel: "Als PDF speichern" oder "Microsoft Print to PDF"
+  Papierformat: A4
+  Ränder: Keine (oder Minimum)
+  Hintergrundgrafiken: ✓ aktivieren
+  → Speichern
 ```
 
 ---
@@ -1293,4 +1359,22 @@ Führe diese Checkliste ZWINGEND vor der PDF-Lieferung durch:
 
 ---
 
-*Document Generator v1.1 · Verbesserte Design-Qualität, Quellenkonformität & Rechtschreibprüfung*
+## SYNC-HINWEIS — Kopien dieser Datei
+
+> Diese Datei existiert an drei Orten. Bei Änderungen **alle drei** aktualisieren:
+
+| Speicherort | Pfad / URL |
+|---|---|
+| auto-doc Projekt | `.cursor/plans/document_generator_standalone.md` |
+| Standalone Repo | `c:\Users\jst01\source\repos\document-generator\document_generator_standalone.md` |
+| Google Drive | [document_generator_standalone.md](https://drive.google.com/file/d/1DfypO8ABbNHSq1ibPPK7iijBvsgycJ9p/view) |
+
+**Für den Agenten:** Wenn du diese Datei änderst, weise den Nutzer darauf hin, dass er die anderen zwei Kopien ebenfalls aktualisieren soll — oder führe den Update-Skript aus:
+```bash
+# Drive-Upload via Node.js (erfordert GOOGLE_SERVICE_ACCOUNT_KEY env)
+node scripts/upload-standalone-to-drive.js
+```
+
+---
+
+*Document Generator v1.2 · Zwei-Pfad PDF-Lieferung (Browser-Modus + Code-Only-Modus)*
