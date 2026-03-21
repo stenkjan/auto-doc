@@ -434,6 +434,7 @@ export default function DocGenPage() {
 
   const latestAssistantMessage = [...messages].reverse().find(m => m.role === "assistant" && getMessageText(m).length > 0);
   const latestMarkdown = latestAssistantMessage ? getMessageText(latestAssistantMessage) : "";
+  const isHtmlDocument = latestMarkdown.includes("<!DOCTYPE html>") || latestMarkdown.includes("<html");
 
   /* ── Resource loading ─────────────────────────────────────────── */
 
@@ -502,6 +503,9 @@ export default function DocGenPage() {
       toast.error("Kein Dokument vorhanden.");
       return null;
     }
+    const isHtml = latestMarkdown.includes("<!DOCTYPE html>") || latestMarkdown.includes("<html");
+    if (isHtml) return latestMarkdown;
+
     const res = await fetch("/api/doc-gen/render", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -714,6 +718,14 @@ export default function DocGenPage() {
                   {/* Assistant response */}
                   {m.role === 'assistant' && getMessageText(m) && (() => {
                     const text = getMessageText(m);
+                    const isHtml = text.includes("<!DOCTYPE html>") || text.includes("<html");
+                    if (isHtml) {
+                      return (
+                        <div className="bg-gray-100 text-gray-800 rounded-2xl rounded-tl-sm px-4 py-2 max-w-[95%] text-sm shadow-sm font-mono text-[10px] overflow-hidden whitespace-pre-wrap">
+                          {text.length > 150 ? text.substring(0, 150) + "...\n\n[HTML Dokument im rechten Panel]" : text}
+                        </div>
+                      );
+                    }
                     return (
                       <div className="bg-gray-100 text-gray-800 rounded-2xl rounded-tl-sm px-4 py-2 max-w-[95%] text-sm shadow-sm prose prose-sm prose-blue">
                         <ReactMarkdown remarkPlugins={[remarkGfm]}>
@@ -860,14 +872,24 @@ export default function DocGenPage() {
             </div>
           </div>
           
-          <div className="flex-1 overflow-auto bg-gray-100/30 p-8 relative">
-            <div className="max-w-4xl mx-auto min-h-full bg-white shadow-sm border border-gray-200 p-10 print:p-0 print:border-0 print:shadow-none print:bg-transparent">
+          <div className={`flex-1 overflow-auto bg-gray-100/30 relative ${isHtmlDocument ? "" : "p-8"}`}>
+            <div className={`mx-auto bg-white shadow-sm border border-gray-200 print:p-0 print:border-0 print:shadow-none print:bg-transparent ${isHtmlDocument ? "w-full h-full max-w-none border-0" : "max-w-4xl p-10 min-h-full"}`}>
               {latestMarkdown ? (
-                <div ref={previewRef} className="prose prose-blue max-w-none text-slate-800 break-words dark:prose-invert">
-                  <ReactMarkdown remarkPlugins={[remarkGfm]}>
-                    {latestMarkdown}
-                  </ReactMarkdown>
-                </div>
+                isHtmlDocument ? (
+                  <iframe 
+                    ref={previewRef as any}
+                    srcDoc={latestMarkdown} 
+                    className="w-full h-full min-h-[800px] border-0 bg-transparent"
+                    title="HTML Preview"
+                    sandbox="allow-scripts allow-same-origin"
+                  />
+                ) : (
+                  <div ref={previewRef} className="prose prose-blue max-w-none text-slate-800 break-words dark:prose-invert">
+                    <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                      {latestMarkdown}
+                    </ReactMarkdown>
+                  </div>
+                )
               ) : (
                 <div className="text-center text-gray-300 mt-20 flex flex-col items-center">
                   <svg className="w-16 h-16 mb-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
