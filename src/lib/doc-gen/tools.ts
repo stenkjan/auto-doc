@@ -252,19 +252,23 @@ export function createDocGenTools(sessionId: string) {
           },
           instruction:
             "Zeige diese Zusammenfassung dem Nutzer im Format:\n" +
-            "╔══════════════════════════════════════════════════╗\n" +
-            "║  DOKUMENT-PLAN — Bitte bestätigen               ║\n" +
-            "╠══════════════════════════════════════════════════╣\n" +
-            `║  Typ:       ${documentType}\n` +
-            `║  Titel:     ${title}\n` +
-            `║  Sprache:   ${language}\n` +
-            `║  Seiten:    ~${estimatedPages}\n` +
-            `║  Abschnitte: ${sections.join(" · ")}\n` +
-            `║  Preise:    ${hasPricing ? "Ja" : "Nein"}\n` +
-            (detectedSources.length > 0 ? `║  Quellen:   ${detectedSources.join(", ")}\n` : "") +
-            "╚══════════════════════════════════════════════════╝\n" +
-            (ambiguities.length > 0 ? `\n⚠️ Unklarheiten:\n${ambiguities.map((a) => `- ${a}`).join("\n")}\n` : "") +
-            (questions.length > 0 ? `\nRückfragen:\n${questions.map((q, i) => `${i + 1}. ${q}`).join("\n")}\n\nBestätige mit „Ja" oder beantworte die Fragen.` : "\nBestätige mit „Ja" um zu starten."),
+            "\u2554\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2557\n" +
+            "\u2551  DOKUMENT-PLAN \u2014 Bitte best\u00e4tigen               \u2551\n" +
+            "\u2560\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2563\n" +
+            `\u2551  Typ:       ${documentType}\n` +
+            `\u2551  Titel:     ${title}\n` +
+            `\u2551  Sprache:   ${language}\n` +
+            `\u2551  Seiten:    ~${estimatedPages}\n` +
+            `\u2551  Abschnitte: ${sections.join(" \u00b7 ")}\n` +
+            `\u2551  Preise:    ${hasPricing ? "Ja" : "Nein"}\n` +
+            (detectedSources.length > 0 ? `\u2551  Quellen:   ${detectedSources.join(", ")}\n` : "") +
+            "\u255a\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u255d\n" +
+            (ambiguities.length > 0
+              ? "\n\u26a0\ufe0f Unklarheiten:\n" + ambiguities.map((a) => "- " + a).join("\n") + "\n"
+              : "") +
+            (questions.length > 0
+              ? "\nR\u00fcckfragen:\n" + questions.map((q, i) => (i + 1) + ". " + q).join("\n") + "\n\nBest\u00e4tige mit \u201eJa\u201c oder beantworte die Fragen."
+              : "\nBest\u00e4tige mit \u201eJa\u201c um zu starten."),
         };
       },
     }),
@@ -325,14 +329,14 @@ export function createDocGenTools(sessionId: string) {
             ? `Korrigiere diese ${issues.length} Problem(e) im Dokument bevor du die Antwort abschließt:\n${issues.map((i) => `- ${i}`).join("\n")}`
             : "Keine Probleme gefunden. Dokument kann geliefert werden.",
           qaReport:
-            `─────────────────────────────────────────\n` +
-            `QA-BERICHT\n` +
-            `─────────────────────────────────────────\n` +
-            `Platzhalter:  ${placeholders.length === 0 ? "✅ Keine" : `⚠️ ${placeholders.length} gefunden`}\n` +
-            `Rechtschreibung: ${language === "de" && issues.some((i) => i.includes("Schreibweise")) ? "⚠️ Korrekturen nötig" : "✅ OK"}\n` +
-            `Annahmen:     ${assumptionRequired && !assumptionLabelled ? "⚠️ Nicht gekennzeichnet" : "✅ OK"}\n` +
-            `Gesamtergebnis: ${issues.length === 0 ? "✅ Bestanden" : `❌ ${issues.length} Problem(e)`}\n` +
-            `─────────────────────────────────────────`,
+            "-----------------------------------------\n" +
+            "QA-BERICHT\n" +
+            "-----------------------------------------\n" +
+            `Platzhalter:  ${placeholders.length === 0 ? "\u2705 Keine" : "\u26a0\ufe0f " + placeholders.length + " gefunden"}\n` +
+            `Rechtschreibung: ${language === "de" && issues.some((i) => i.includes("Schreibweise")) ? "\u26a0\ufe0f Korrekturen n\u00f6tig" : "\u2705 OK"}\n` +
+            `Annahmen:     ${assumptionRequired && !assumptionLabelled ? "\u26a0\ufe0f Nicht gekennzeichnet" : "\u2705 OK"}\n` +
+            `Gesamtergebnis: ${issues.length === 0 ? "\u2705 Bestanden" : "\u274c " + issues.length + " Problem(e)"}\n` +
+            "-----------------------------------------",
         };
       },
     }),
