@@ -275,11 +275,11 @@ export function createDocGenTools(sessionId: string) {
 
     validate_document: tool({
       description:
-        "Prüft ein fertig generiertes Markdown-Dokument auf: Quellenkonformität (sind Annahmen markiert?), Zahlen-Konsistenz (stimmen Summen?), Terminologie-Einheitlichkeit und Rechtschreibfehler (österreichisches Deutsch). Rufe dieses Tool NACH der Dokument-Generierung auf bevor du die finale Antwort gibst.",
+        "Prüft ein fertig generiertes HTML-Dokument auf: Quellenkonformität (sind Annahmen markiert?), Zahlen-Konsistenz (stimmen Summen?), Terminologie-Einheitlichkeit und Rechtschreibfehler. Rufe dieses Tool NACH der Dokument-Generierung auf bevor du die finale Antwort gibst.",
       inputSchema: z.object({
-        markdown: z
+        htmlText: z
           .string()
-          .describe("Das fertig generierte Markdown-Dokument"),
+          .describe("Das fertig generierte HTML-Dokument"),
         language: z
           .enum(["de", "en"])
           .describe("Dokumentsprache für Rechtschreibprüfung"),
@@ -288,11 +288,11 @@ export function createDocGenTools(sessionId: string) {
           .describe("Enthält das Dokument Preisangaben die kreuzgeprüft werden sollen?"),
       }),
       execute: async ({
-        markdown,
+        htmlText,
         language,
         hasPricing,
       }: {
-        markdown: string;
+        htmlText: string;
         language: "de" | "en";
         hasPricing: boolean;
       }) => {
@@ -300,22 +300,22 @@ export function createDocGenTools(sessionId: string) {
         const issues: string[] = [];
 
         // Check for unfilled placeholders
-        const placeholders = markdown.match(/\[[A-ZÄÖÜ][^\]]{2,50}\]/g) ?? [];
+        const placeholders = htmlText.match(/\[[A-ZÄÖÜ][^\]]{2,50}\]/g) ?? [];
         if (placeholders.length > 0) {
           issues.push(`${placeholders.length} ungefüllte Platzhalter gefunden: ${placeholders.slice(0, 5).join(", ")}`);
         }
 
         // German spelling quick checks
         if (language === "de") {
-          if (/\bdaß\b/i.test(markdown)) issues.push("Veraltete Schreibweise 'daß' → 'dass'");
-          if (/\bmuß\b/i.test(markdown)) issues.push("Veraltete Schreibweise 'muß' → 'muss'");
-          if (/\bMwst\b/i.test(markdown)) issues.push("Schreibweise 'MwSt.' oder 'USt.' verwenden, nicht 'Mwst'");
-          if (/GmbH\./.test(markdown)) issues.push("'GmbH.' — kein Punkt nach GmbH");
+          if (/\bdaß\b/i.test(htmlText)) issues.push("Veraltete Schreibweise 'daß' → 'dass'");
+          if (/\bmuß\b/i.test(htmlText)) issues.push("Veraltete Schreibweise 'muß' → 'muss'");
+          if (/\bMwst\b/i.test(htmlText)) issues.push("Schreibweise 'MwSt.' oder 'USt.' verwenden, nicht 'Mwst'");
+          if (/GmbH\./.test(htmlText)) issues.push("'GmbH.' — kein Punkt nach GmbH");
         }
 
         // Check assumptions are labelled
-        const assumptionRequired = /\b(ca\.|ungefähr|etwa|schätzungsweise|angenommen|assume|approximately)\b/i.test(markdown);
-        const assumptionLabelled = /\bAnnahme:\b/i.test(markdown);
+        const assumptionRequired = /\b(ca\.|ungefähr|etwa|schätzungsweise|angenommend|assume|approximately)\b/i.test(htmlText);
+        const assumptionLabelled = /\bAnnahme:\b/i.test(htmlText);
         if (assumptionRequired && !assumptionLabelled) {
           issues.push("Schätzwerte/Annahmen vorhanden aber nicht als 'Annahme:' gekennzeichnet");
         }
@@ -326,17 +326,35 @@ export function createDocGenTools(sessionId: string) {
           issues,
           hasPricing,
           instruction: issues.length > 0
-            ? `Korrigiere diese ${issues.length} Problem(e) im Dokument bevor du die Antwort abschließt:\n${issues.map((i) => `- ${i}`).join("\n")}`
+            ? `Korrigiere diese ${issues.length} Problem(e) im Dokument via edit_document_html bevor du die Antwort abschließt:\n${issues.map((i) => `- ${i}`).join("\n")}`
             : "Keine Probleme gefunden. Dokument kann geliefert werden.",
           qaReport:
             "-----------------------------------------\n" +
             "QA-BERICHT\n" +
             "-----------------------------------------\n" +
-            `Platzhalter:  ${placeholders.length === 0 ? "\u2705 Keine" : "\u26a0\ufe0f " + placeholders.length + " gefunden"}\n` +
-            `Rechtschreibung: ${language === "de" && issues.some((i) => i.includes("Schreibweise")) ? "\u26a0\ufe0f Korrekturen n\u00f6tig" : "\u2705 OK"}\n` +
-            `Annahmen:     ${assumptionRequired && !assumptionLabelled ? "\u26a0\ufe0f Nicht gekennzeichnet" : "\u2705 OK"}\n` +
-            `Gesamtergebnis: ${issues.length === 0 ? "\u2705 Bestanden" : "\u274c " + issues.length + " Problem(e)"}\n` +
+            `Platzhalter:  ${placeholders.length === 0 ? "✅ Keine" : "⚠️ " + placeholders.length + " gefunden"}\n` +
+            `Rechtschreibung: ${language === "de" && issues.some((i) => i.includes("Schreibweise")) ? "⚠️ Korrekturen nötig" : "✅ OK"}\n` +
+            `Annahmen:     ${assumptionRequired && !assumptionLabelled ? "⚠️ Nicht gekennzeichnet" : "✅ OK"}\n` +
+            `Gesamtergebnis: ${issues.length === 0 ? "✅ Bestanden" : "❌ " + issues.length + " Problem(e)"}\n` +
             "-----------------------------------------",
+        };
+      },
+    }),
+
+    edit_document_html: tool({
+      description:
+        "Verwende dieses Tool im Amendment-Modus (Phase 6), um einen String im HTML-Dokument präzise durch einen neuen zu ersetzen. Dies ist VIEL schneller als das HTML neu zu generieren. Gib den exakten Suchstring (inkl. umgebendem HTML-Code) und den neuen String an. Führe dies auch für das versteckte JSON DOC_DATA_MODEL aus, falls sich Werte ändern.",
+      inputSchema: z.object({
+        searchString: z.string().describe("Der exakte String der im HTML gesucht werden soll (1-2 Zeilen Kontext mitnehmen zur Eindeutigkeit)"),
+        replacementString: z.string().describe("Der neue String der den alten ersetzen soll"),
+        reason: z.string().describe("Kurze Begründung für die Änderung (z.B. 'Preis von X auf Y erhöht')"),
+      }),
+      execute: async ({ searchString, replacementString, reason }) => {
+        // Log the amendment request (typically the UI would apply the diff automatically over the existing HTML token stream)
+        await saveMemory(sessionId, `amendment_${Date.now()}`, `Ersetze:\n${searchString}\nDurch:\n${replacementString}\nGrund:\n${reason}`);
+        return {
+          success: true,
+          instruction: `Änderung erfolgreich registriert: "${reason}". Teile dem Nutzer mit, dass das Dokument aktualisiert wurde.`,
         };
       },
     }),
