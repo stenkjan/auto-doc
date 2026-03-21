@@ -1,0 +1,631 @@
+<!DOCTYPE html>
+<html lang="de">
+
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Konzept-Check: Kostenplanung – DOC-2026-001</title>
+    <link href="https://fonts.googleapis.com/css2?family=Geist:wght@300;400;500;600;700;800&display=swap"
+        rel="stylesheet">
+    <style>
+        /* ── SEITEN-LAYOUT ─────────────────────────────────────── */
+        @page {
+            size: A4;
+            margin: 16mm 16mm 18mm 16mm;
+        }
+
+        *,
+        *::before,
+        *::after {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        :root {
+            /* ── PRIMÄRE MARKENFARBEN ──────────────────────────── */
+            --color-primary: #2F4538;
+            /* Waldgrün — Alternativ für Naturprojekte */
+            --color-primary-alt: #3D6CE1;
+            /* Hoam Blau */
+            --color-dark: #1a1a1a;
+
+            /* ── TEXTHIERARCHIE ───────────────────────────────── */
+            --color-text: #1a1a1a;
+            --color-text-secondary: #555555;
+            --color-text-muted: #888888;
+            --color-text-light: #aaaaaa;
+
+            /* ── HINTERGRÜNDE ────────────────────────────────── */
+            --color-bg-base: #ffffff;
+            --color-bg-subtle: #fafafa;
+            --color-bg-light: #f4f4f4;
+            --color-bg-tint: #eef2ff;
+            --color-bg-warm: #fff8f0;
+
+            /* ── RAHMEN ──────────────────────────────────────── */
+            --color-border: #e0e0e0;
+            --color-border-light: #f0f0f0;
+            --color-border-tint: #c7d4f8;
+            --color-border-warm: #efd9b4;
+        }
+
+        body {
+            font-family: 'Geist', -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Helvetica Neue', Arial, sans-serif;
+            font-size: 11px;
+            line-height: 1.6;
+            color: var(--color-text);
+            -webkit-print-color-adjust: exact;
+            print-color-adjust: exact;
+        }
+
+        .page {
+            max-width: 210mm;
+            margin: 0 auto;
+            min-height: 267mm;
+            display: flex;
+            flex-direction: column;
+            break-after: page;
+        }
+
+        /* ── TYPOGRAFIE ─────────────────────────────────────────── */
+        .cover-title {
+            font-size: 34px;
+            font-weight: 800;
+            color: var(--color-text);
+            letter-spacing: -0.03em;
+            margin-bottom: 10px;
+            line-height: 1.1;
+        }
+
+        .cover-subtitle {
+            font-size: 15px;
+            font-weight: 500;
+            color: var(--color-primary);
+            margin-bottom: 20px;
+        }
+
+        .section-title {
+            font-size: 18px;
+            font-weight: 800;
+            color: var(--color-text);
+            letter-spacing: -0.02em;
+            margin-bottom: 4px;
+        }
+
+        .section-subtitle {
+            font-size: 10.5px;
+            color: var(--color-text-secondary);
+            margin-bottom: 13px;
+        }
+
+        .subsection-title {
+            font-size: 11.5px;
+            font-weight: 700;
+            margin-top: 13px;
+            margin-bottom: 7px;
+            color: var(--color-text);
+        }
+
+        /* ── HEADER ─────────────────────────────────────────────── */
+        .doc-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-end;
+            border-bottom: 2.5px solid var(--color-primary);
+            padding-bottom: 10px;
+            margin-bottom: 13px;
+        }
+
+        .logo-img {
+            height: 30px;
+        }
+
+        .header-meta {
+            text-align: right;
+            font-size: 8px;
+            color: var(--color-text-light);
+            line-height: 1.7;
+        }
+
+        /* ── INTRO-BLOCK ─────────────────────────────────────────── */
+        .intro-block {
+            border-left: 3px solid var(--color-primary);
+            padding: 8px 12px;
+            background: var(--color-bg-light);
+            border-radius: 0 7px 7px 0;
+            margin-bottom: 12px;
+            font-size: 10.5px;
+            color: #333;
+            line-height: 1.65;
+        }
+
+        /* ── PHASE-HEADER ────────────────────────────────────────── */
+        .phase-header {
+            display: flex;
+            align-items: flex-start;
+            gap: 9px;
+            margin-bottom: 9px;
+            margin-top: 24px;
+        }
+
+        .phase-badge {
+            background: var(--color-primary);
+            color: #fff;
+            font-size: 7.5px;
+            font-weight: 700;
+            padding: 4px 9px;
+            border-radius: 4px;
+            text-transform: uppercase;
+            letter-spacing: 0.6px;
+            flex-shrink: 0;
+            margin-top: 2px;
+        }
+
+        .phase-title {
+            font-size: 13.5px;
+            font-weight: 800;
+            color: var(--color-text);
+            letter-spacing: -0.2px;
+            line-height: 1.2;
+        }
+
+        .phase-subtitle {
+            font-size: 8.5px;
+            color: var(--color-text-secondary);
+            margin-top: 2px;
+            line-height: 1.4;
+        }
+
+        /* ── FOOTER ─────────────────────────────────────────────── */
+        .doc-footer {
+            border-top: 1px solid var(--color-border);
+            padding-top: 8px;
+            margin-top: auto;
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-end;
+            font-size: 7.5px;
+            color: var(--color-text-light);
+            line-height: 1.65;
+        }
+
+        .doc-footer strong {
+            color: #666;
+        }
+
+        .doc-footer a {
+            color: var(--color-primary);
+            text-decoration: none;
+        }
+
+        /* ── TABELLEN ───────────────────────────────────────────── */
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-bottom: 8px;
+            font-size: 9.5px;
+        }
+
+        thead tr {
+            background: var(--color-bg-light);
+        }
+
+        thead th {
+            padding: 5px 8px;
+            text-align: left;
+            font-size: 7.5px;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.7px;
+            color: var(--color-text-muted);
+            border-bottom: 1.5px solid var(--color-border);
+        }
+
+        tbody td {
+            padding: 5px 8px;
+            border-bottom: 1px solid var(--color-border-light);
+            vertical-align: top;
+            color: #333;
+        }
+
+        .text-right {
+            text-align: right;
+            white-space: nowrap;
+        }
+
+        .td-label {
+            font-size: 8px;
+            color: var(--color-text-light);
+            font-style: italic;
+        }
+
+        .row-sum {
+            background: var(--color-bg-tint);
+            border-top: 1.5px solid var(--color-border-tint) !important;
+        }
+
+        .row-sum td {
+            font-weight: 700;
+            color: var(--color-text);
+        }
+
+        .row-vat td {
+            color: var(--color-text-secondary);
+            font-size: 9px;
+        }
+
+        .row-ne {
+            color: var(--color-text-light) !important;
+            font-style: italic !important;
+            font-size: 8.5px !important;
+        }
+
+        /* ── TOTAL-BAR ─────────────────────────────────────────── */
+        .total-bar {
+            background: var(--color-dark);
+            color: #fff;
+            border-radius: 8px;
+            padding: 10px 13px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 11px;
+            margin-top: 15px;
+        }
+
+        .total-bar .label {
+            font-size: 10.5px;
+            font-weight: 700;
+        }
+
+        .total-bar .sub {
+            font-size: 8px;
+            color: #888;
+            margin-top: 2px;
+        }
+
+        .total-bar .amount-main {
+            font-size: 19px;
+            font-weight: 800;
+            letter-spacing: -0.3px;
+            line-height: 1;
+            text-align: right;
+        }
+
+        .total-bar .amount-note {
+            font-size: 7.5px;
+            color: #888;
+            margin-top: 2px;
+            text-align: right;
+        }
+
+        /* ── INFO-SECTION & CARDS ──────────────────────────────── */
+        .info-section {
+            background: var(--color-bg-subtle);
+            border: 1px solid var(--color-border);
+            border-radius: 7px;
+            padding: 10px 12px;
+            margin-bottom: 12px;
+        }
+
+        .info-row {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 3px;
+            font-size: 10px;
+        }
+
+        .info-label {
+            color: var(--color-text-muted);
+            min-width: 80px;
+        }
+
+        .info-value {
+            font-weight: 600;
+            color: var(--color-text);
+        }
+
+        /* ── SOURCE-NOTE ────────────────────────────────────────── */
+        .source-note {
+            font-size: 7.5px;
+            color: var(--color-text-light);
+            font-style: italic;
+            line-height: 1.55;
+            margin-bottom: 10px;
+            padding: 6px 10px;
+            background: var(--color-bg-subtle);
+            border-radius: 4px;
+            border-left: 2px solid var(--color-border);
+        }
+
+        .source-note strong {
+            color: var(--color-text-muted);
+            font-style: normal;
+        }
+
+        /* ── SCREEN-VORSCHAU ────────────────────────────────────── */
+        @media screen {
+            body {
+                background: #c8c8c8;
+                padding: 24px 20px;
+            }
+
+            .page {
+                background: #fff;
+                padding: 14mm;
+                margin: 0 auto 24px;
+                max-width: 210mm;
+                box-shadow: 0 8px 40px rgba(0, 0, 0, 0.15);
+                border-radius: 3px;
+            }
+        }
+
+        @media print {
+            body {
+                padding: 0;
+                background: white;
+            }
+
+            .page {
+                padding: 0;
+                max-width: none;
+                min-height: auto;
+                box-shadow: none;
+            }
+        }
+    </style>
+</head>
+
+<body>
+
+    <div class="page cover-page" style="display:flex; flex-direction:column; align-items:center; text-align:center;">
+        <div
+            style="flex:1; display:flex; flex-direction:column; justify-content:center; align-items:center; width:100%;">
+
+            <div
+                style="width: 64px; height: 64px; background: var(--color-primary); border-radius: 12px; display:flex; align-items:center; justify-content:center; color: white; font-weight: 800; font-size: 24px; margin-bottom: 40px;">
+                H
+            </div>
+
+            <h1 class="cover-title">Konzept-Check</h1>
+            <p class="cover-subtitle">Kostenplanung & Standortanalyse</p>
+
+            <div class="info-section" style="text-align:left; min-width:300px; margin-bottom:32px;">
+                <div class="info-row"><span class="info-label">Referenz:</span><span
+                        class="info-value">DOC-2026-001</span></div>
+                <div class="info-row"><span class="info-label">Datum:</span><span class="info-value">21.03.2026</span>
+                </div>
+                <div class="info-row"><span class="info-label">Projekt:</span><span class="info-value">Errichtung Hoam
+                        Haus Typ 1</span></div>
+                <div class="info-row"><span class="info-label">Standort:</span><span class="info-value">Grundstücke
+                        1713/2 & 1723/1</span></div>
+            </div>
+
+            <p style="font-size:10px; color:#666; font-style:italic; max-width: 400px; line-height: 1.5;">
+                Vorentwurfsphase: Kostenschätzung gemäß ÖNORM B 1801-1<br>
+                Grundlage: Empfehlungen für Herstellungskosten 2025 (Hauptverband der allgemein beeideten und
+                gerichtlich zertifizierten Sachverständigen Österreichs)
+            </p>
+        </div>
+
+        <div class="doc-footer" style="width: 100%;">
+            <div>
+                <strong>Eco Chalets GmbH</strong><br>
+                Zösenberg 51, 8045 Weinitzen, Österreich<br>
+                FN 615495s · ATU80031207<br>
+                GF: DI Markus Schmoltner & Bernhard Grentner
+            </div>
+            <div style="text-align:center;">
+                +43 664 3949605<br>
+                <a href="mailto:mail@hoam-house.com">mail@hoam-house.com</a>
+            </div>
+            <div style="text-align:right;">
+                <a href="https://hoam-house.com">hoam-house.com</a>
+            </div>
+        </div>
+    </div>
+
+    <div class="page">
+        <div class="doc-header">
+            <div
+                style="font-size: 21px; font-weight: 800; color: var(--color-primary); letter-spacing: -0.5px; line-height: 1;">
+                Hoam.</div>
+            <div class="header-meta">
+                <strong>DOC-2026-001</strong><br>
+                Datum: 21.03.2026<br>
+                Errichtung Hoam Haus Typ 1
+            </div>
+        </div>
+
+        <h2 class="section-title">Kostenschätzung Gesamtsystem</h2>
+        <p class="section-subtitle">Zusammenfassung der Abbruch- und Herstellungskosten inkl. Kostengruppierung gemäß
+            ÖNORM B 1801-1</p>
+
+        <div class="intro-block">
+            Diese Kostenschätzung basiert auf einer angenommenen Kubatur für den Abbruch (Annahme: 3,0 m pro Geschoss)
+            sowie auf den Baukostenrichtwerten der gerichtlichen Sachverständigen für das Jahr 2025. Die
+            Herstellungskosten wurden top-down aus dem geforderten Brutto-Richtwert abgeleitet.
+        </div>
+
+        <div class="phase-header">
+            <div class="phase-badge">Phase 1</div>
+            <div>
+                <div class="phase-title">Abbruch Bestandsgebäude</div>
+                <div class="phase-subtitle">Rückbau und Entsorgung der Bestandsobjekte auf den Zielgrundstücken</div>
+            </div>
+        </div>
+
+        <table>
+            <thead>
+                <tr>
+                    <th style="width:40px;">Nr.</th>
+                    <th>Bezeichnung</th>
+                    <th style="width:100px;" class="text-right">Menge</th>
+                    <th style="width:110px;" class="text-right">EP netto</th>
+                    <th style="width:110px;" class="text-right">Gesamt netto</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr>
+                    <td class="text-right">1.1</td>
+                    <td>
+                        <strong>Abbruch Gebäude (Grst. 1713/2)</strong><br>
+                        <span style="color:#666; font-size:9.5px;">Berechnet: 14 × 20 m × 9,0 m H (3 Geschosse á 3
+                            m)</span>
+                    </td>
+                    <td class="text-right">2.520,00 m³</td>
+                    <td class="text-right">40,00 €</td>
+                    <td class="text-right">100.800,00 €</td>
+                </tr>
+                <tr>
+                    <td class="text-right">1.2</td>
+                    <td>
+                        <strong>Abbruch Gebäude (Grst. 1723/1)</strong><br>
+                        <span style="color:#666; font-size:9.5px;">Berechnet: 12 × 22 m × 7,5 m H (2,5 Geschosse á 3
+                            m)</span>
+                    </td>
+                    <td class="text-right">1.980,00 m³</td>
+                    <td class="text-right">40,00 €</td>
+                    <td class="text-right">79.200,00 €</td>
+                </tr>
+                <tr class="row-sum">
+                    <td colspan="4" class="text-right">Zwischensumme Phase 1 (netto)</td>
+                    <td class="text-right">180.000,00 €</td>
+                </tr>
+                <tr class="row-vat">
+                    <td colspan="4" class="text-right">+ 20 % USt.</td>
+                    <td class="text-right">36.000,00 €</td>
+                </tr>
+            </tbody>
+        </table>
+
+        <div class="source-note">
+            <strong>Quellenangaben Phase 1:</strong><br>
+            • Kubatur: gem. Kundenangabe errechnet (Annahme: 3,0 m Höhe pro Geschoss).<br>
+            • Einheitspreis: gem. Roland-POPP_SV-2025-3_Herstellungskosten.pdf, S. 5 (Richtwert Ziegelmauerwerk frei
+            stehend: 30–40 €/m³, Ansatz: 40 €/m³ netto).
+        </div>
+
+        <div class="phase-header">
+            <div class="phase-badge">Phase 2</div>
+            <div>
+                <div class="phase-title">Errichtung Hoam Haus Typ 1</div>
+                <div class="phase-subtitle">Kostenschätzung der Errichtungskosten inkl. Planungsleistungen (155 m²
+                    Nutzfläche)</div>
+            </div>
+        </div>
+
+        <table>
+            <thead>
+                <tr>
+                    <th style="width:40px;">KG</th>
+                    <th>Bezeichnung nach ÖNORM B 1801-1</th>
+                    <th style="width:110px;" class="text-right">Anteil</th>
+                    <th style="width:110px;" class="text-right">Betrag netto</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr class="row-ne">
+                    <td class="text-right">0</td>
+                    <td>Grundstück</td>
+                    <td class="text-right">nicht bewertet</td>
+                    <td class="text-right">0,00 €</td>
+                </tr>
+                <tr>
+                    <td class="text-right">1</td>
+                    <td>
+                        <strong>Aufschließung</strong><br>
+                        <span style="color:#666; font-size:9.5px;">Annahme: 5 % der reinen Bauwerkskosten</span>
+                    </td>
+                    <td class="text-right">5,00 %</td>
+                    <td class="text-right">24.218,75 €</td>
+                </tr>
+                <tr>
+                    <td class="text-right">2-4</td>
+                    <td>
+                        <strong>Bauwerkskosten (Rohbau, Technik, Ausbau)</strong><br>
+                        <span style="color:#666; font-size:9.5px;">Rückgerechnet aus Ziel-Bruttowert (4.500 €/m² inkl.
+                            Nebenkosten)</span>
+                    </td>
+                    <td class="text-right">100,00 % (Basis)</td>
+                    <td class="text-right">484.375,00 €</td>
+                </tr>
+                <tr class="row-ne">
+                    <td class="text-right">5</td>
+                    <td>Einrichtung (Annahme: 0 %)</td>
+                    <td class="text-right">nach Bedarf</td>
+                    <td class="text-right">0,00 €</td>
+                </tr>
+                <tr class="row-ne">
+                    <td class="text-right">6</td>
+                    <td>Außenanlagen</td>
+                    <td class="text-right">nach Bedarf</td>
+                    <td class="text-right">0,00 €</td>
+                </tr>
+                <tr>
+                    <td class="text-right">7-8</td>
+                    <td>
+                        <strong>Planungs- und Projektnebenleistungen</strong><br>
+                        <span style="color:#666; font-size:9.5px;">Annahme: 15 % der reinen Bauwerkskosten</span>
+                    </td>
+                    <td class="text-right">15,00 %</td>
+                    <td class="text-right">72.656,25 €</td>
+                </tr>
+                <tr class="row-ne">
+                    <td class="text-right">9</td>
+                    <td>Reserven</td>
+                    <td class="text-right">nicht bewertet</td>
+                    <td class="text-right">0,00 €</td>
+                </tr>
+                <tr class="row-sum">
+                    <td colspan="3" class="text-right">Zwischensumme Phase 2 (netto)</td>
+                    <td class="text-right">581.250,00 €</td>
+                </tr>
+                <tr class="row-vat">
+                    <td colspan="3" class="text-right">+ 20 % USt.</td>
+                    <td class="text-right">116.250,00 €</td>
+                </tr>
+            </tbody>
+        </table>
+
+        <div class="source-note">
+            <strong>Quellenangaben Phase 2:</strong><br>
+            • Zielpreis: 155 m² Nutzfläche gem. Kundenangabe × 4.500 €/m² Brutto-Gesamtkosten = 697.500,00 € brutto.<br>
+            • Richtwert: gem. Roland-POPP_SV-2025-3_Herstellungskosten.pdf, S. 3 (Wohngebäude, hochwertig, Richtwert:
+            4.300–5.300 €/m², Ansatz: 4.500 €/m² inkl. USt., inkl. KG 1, KG 7+8).<br>
+            • Aufgliederung: Annahme (5 % KG 1, 15 % KG 7-8) zur Darstellung gem. ÖNORM B 1801-1, Basis-Bauwerkskosten
+            netto wurden mathematisch rückgerechnet, um den fixierten Bruttozielwert von 697.500,00 € exakt zu
+            erreichen.
+        </div>
+
+        <div class="total-bar">
+            <div>
+                <div class="label">Gesamtbetrag Projekt (Phase 1 + Phase 2)</div>
+                <div class="sub">Inklusive 20 % USt. (152.250,00 €) | Summe netto: 761.250,00 €</div>
+            </div>
+            <div>
+                <div class="amount-main">913.500,00 €</div>
+            </div>
+        </div>
+
+        <div class="doc-footer">
+            <div>
+                <strong>Eco Chalets GmbH</strong><br>
+                Zösenberg 51, 8045 Weinitzen, Österreich<br>
+                FN 615495s · ATU80031207
+            </div>
+            <div style="text-align:center;">
+                +43 664 3949605<br>
+                <a href="mailto:mail@hoam-house.com">mail@hoam-house.com</a>
+            </div>
+            <div style="text-align:right;">
+                Seite 2 von 2<br>
+                <a href="https://hoam-house.com">hoam-house.com</a>
+            </div>
+        </div>
+    </div>
+
+</body>
+
+</html>
