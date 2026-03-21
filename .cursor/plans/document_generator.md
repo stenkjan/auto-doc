@@ -1,6 +1,6 @@
 # DOCUMENT_GENERATOR — Ausführbares Agent-Blueprint
 
-**Version:** 1.0.0 · **Sprache:** Deutsch/Englisch · **Ausgabe:** Standalone HTML → PDF
+**Version:** 1.1.0 · **Sprache:** Deutsch/Englisch · **Ausgabe:** Standalone HTML → PDF
 
 ---
 
@@ -89,7 +89,7 @@ Du arbeitest in zwei Modi:
 
 | Modus | Trigger | Ablauf |
 |---|---|---|
-| **Generierungs-Modus** | Neues Dokument angefordert | Phasen 1 → 2 → 3 → 4 → 5 |
+| **Generierungs-Modus** | Neues Dokument angefordert | Phasen 1 → 2 → 3 → 4 → 4.9 → 5 |
 | **Amendment-Modus** | Änderung an bestehendem Dokument | Phase 6 (eigenständig) |
 
 **Erkennungsregel für Amendment-Modus:** Wenn der Prompt Wörter enthält wie *„ändere", „ersetze", „füge hinzu", „entferne", „aktualisiere", „passe an", „update", „change", „fix", „modify"* UND bereits eine Datei unter `generated-docs/` existiert → Amendment-Modus.
@@ -208,6 +208,34 @@ Identifiziere und extrahiere aus den Referenzen:
 | Bilder, Logos | `assets[]` |
 | Tabellen, Auflistungen | `sections[].tables[]` |
 
+### 2.2b Quellenfingerabdruck (Source Fingerprinting)
+
+**Pflicht:** Für jeden extrahierten Zahlenwert oder normativen Verweis weise die Quelle nach.
+Ergänze das Datenmodell um ein `sources`-Feld:
+
+```json
+"sources": [
+  {
+    "value": "4.500 €/m²",
+    "origin": "user_input | reference_file | calculated | standard | assumption",
+    "ref": "Roland-POPP_SV-2025-3_Herstellungskosten.pdf, S. 3",
+    "note": "Wohngebäude hochwertig, Tirol/Salzburg, inkl. USt."
+  }
+]
+```
+
+**Ursprungstypen:**
+
+| Origin | Bedeutung | Kennzeichnung im Dokument |
+|---|---|---|
+| `user_input` | Direkt vom Nutzer genannt | „gem. Kundenangabe" |
+| `reference_file` | Aus beigefügter Datei | „gem. [Dateiname], S. [X] / Abschn. [Y]" |
+| `calculated` | Errechnet — Formel zeigen | „14 × 20 × 9,0 m = 2.520 m³" |
+| `standard` | Aus Norm/Regelwerk | „ÖNORM B 1801-1, Abschnitt [X]" |
+| `assumption` | Annahme ohne Beleg | Klar im Text als **„Annahme:"** markieren |
+
+> Werte ohne nachweisbaren Ursprung → als `assumption` flaggen und im Dokument explizit ausweisen.
+
 ### 2.3 Pricing-Mustererkennung
 
 | Muster im Text | Mapping |
@@ -275,13 +303,14 @@ Baue folgendes JSON-Datenmodell auf. Es wird später als HTML-Kommentar im Outpu
 ```json
 {
   "name": "Eco Chalets GmbH",
-  "address": "Karmeliterplatz 8, 8010 Graz",
+  "address": "Zösenberg 51, 8045 Weinitzen, Österreich",
   "contact": {
-    "phone": "+43 (0) 664 3949605",
+    "phone": "+43 664 3949605",
     "email": "mail@hoam-house.com",
     "website": "hoam-house.com"
   },
-  "registration": { "fn": "FN 615495s", "uid": "ATU80031207" }
+  "registration": { "fn": "FN 615495s", "uid": "ATU80031207" },
+  "directors": "GF: DI Markus Schmoltner & Bernhard Grentner"
 }
 ```
 
@@ -365,26 +394,44 @@ Kopiere diesen gesamten CSS-Block als `<style>`-Inhalt:
 /* ── SEITEN-LAYOUT ─────────────────────────────────────── */
 @page {
   size: A4;
-  margin: 18mm 16mm 20mm 16mm; /* top right bottom left — NICHT ändern */
+  /* Dichte Dokumente (Kostenpläne, Tabellen):  */
+  margin: 14mm 14mm 16mm 14mm;
+  /* Luftige Dokumente (Berichte, Angebote):
+     margin: 18mm 16mm 20mm 16mm; */
 }
 
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
 :root {
-  --color-primary: #2F4538;
-  --color-text: #1a1a1a;
-  --color-text-secondary: #666;
-  --color-text-light: #999;
-  --color-bg-table: #F4F4F4;
-  --color-bg-info: #FAFAFA;
-  --color-border: #e0e0e0;
+  /* ── PRIMÄRE MARKENFARBEN ──────────────────────────── */
+  --color-primary:     #3D6CE1;   /* Hoam Blau — Standardakzent                 */
+  --color-primary-alt: #2F4538;   /* Waldgrün — Alternativ für Naturprojekte    */
+  --color-dark:        #1a1a1a;   /* Total-Bar, starke Anker                     */
+
+  /* ── TEXTHIERARCHIE ───────────────────────────────── */
+  --color-text:            #1a1a1a;  /* Haupttext, Überschriften                */
+  --color-text-secondary:  #555555;  /* Beschreibungen, Untertitel               */
+  --color-text-muted:      #888888;  /* Labels, Metainfos                        */
+  --color-text-light:      #aaaaaa;  /* Footer, Quellenhinweise                  */
+
+  /* ── HINTERGRÜNDE ────────────────────────────────── */
+  --color-bg-base:    #ffffff;
+  --color-bg-subtle:  #fafafa;   /* Karten, neutrale Boxen                      */
+  --color-bg-light:   #f4f4f4;   /* Tabellen-Header, Intro-Block                */
+  --color-bg-tint:    #eef2ff;   /* Blau-Tinte → Included, Summary, Highlight   */
+  --color-bg-warm:    #fff8f0;   /* Warm-Tinte → Excluded, Hinweis              */
+
+  /* ── RAHMEN ──────────────────────────────────────── */
+  --color-border:       #e0e0e0;
   --color-border-light: #f0f0f0;
+  --color-border-tint:  #c7d4f8; /* Rahmen für Blau-Tinte-Bereiche              */
+  --color-border-warm:  #efd9b4; /* Rahmen für Warm-Tinte-Bereiche              */
 }
 
 body {
   font-family: 'Geist', -apple-system, BlinkMacSystemFont, 'Segoe UI',
                'Helvetica Neue', Arial, sans-serif;
-  font-size: 11px;
+  font-size: 10.5px;
   line-height: 1.5;
   color: var(--color-text);
   -webkit-print-color-adjust: exact;
@@ -394,153 +441,200 @@ body {
 .page {
   max-width: 210mm;
   margin: 0 auto;
-  padding: 24px 32px;
-  break-after: page;
-  min-height: 297mm;
+  min-height: 267mm; /* A4 minus Seitenränder */
   display: flex;
   flex-direction: column;
-  position: relative;
+  break-after: page;
 }
 
 /* ── TYPOGRAFIE ─────────────────────────────────────────── */
-.cover-title     { font-size: 36px; font-weight: 700; color: var(--color-text); letter-spacing: -0.03em; margin-bottom: 12px; }
-.cover-subtitle  { font-size: 18px; font-weight: 500; color: var(--color-primary); margin-bottom: 24px; }
-.section-title   { font-size: 20px; font-weight: 700; color: var(--color-text); letter-spacing: -0.02em; margin-top: 8px; margin-bottom: 4px; }
-/* WICHTIG: section-title IMMER #1a1a1a — NIEMALS primary color */
-.section-subtitle { font-size: 12px; color: var(--color-text-secondary); margin-bottom: 20px; }
-.subsection-title { font-size: 13px; font-weight: 700; margin-top: 16px; margin-bottom: 8px; }
+.cover-title    { font-size: 34px; font-weight: 800; color: var(--color-text);
+                  letter-spacing: -0.03em; margin-bottom: 10px; line-height: 1.1; }
+.cover-subtitle { font-size: 15px; font-weight: 500; color: var(--color-primary);
+                  margin-bottom: 20px; }
+.section-title  { font-size: 18px; font-weight: 800; color: var(--color-text);
+                  letter-spacing: -0.02em; margin-bottom: 4px; }
+/* PFLICHT: section-title IMMER var(--color-text) = #1a1a1a — NIEMALS primary */
+.section-subtitle { font-size: 10.5px; color: var(--color-text-secondary);
+                    margin-bottom: 13px; }
+.subsection-title { font-size: 11.5px; font-weight: 700; margin-top: 13px;
+                    margin-bottom: 7px; color: var(--color-text); }
 
 /* ── HEADER ─────────────────────────────────────────────── */
 .doc-header {
   display: flex;
   justify-content: space-between;
-  align-items: flex-start;
-  border-bottom: 2px solid var(--color-primary);
-  padding-bottom: 16px;
-  margin-bottom: 20px;
+  align-items: flex-end;
+  border-bottom: 2.5px solid var(--color-primary);
+  padding-bottom: 10px;
+  margin-bottom: 13px;
 }
-.doc-header a { text-decoration: none; }
-.logo-img { height: 32px; width: auto; }
-.header-meta { text-align: right; font-size: 10px; color: var(--color-text-secondary); }
+.logo-area       { display: flex; align-items: center; gap: 9px; }
+.logo-icon       { width: 30px; height: 30px; flex-shrink: 0; }
+.logo-wordmark   { font-size: 21px; font-weight: 800; color: var(--color-primary);
+                   letter-spacing: -0.5px; line-height: 1; }
+.logo-sub        { font-size: 7.5px; text-transform: uppercase; letter-spacing: 1.8px;
+                   color: var(--color-text-muted); font-weight: 600; }
+.header-meta     { text-align: right; font-size: 8px; color: var(--color-text-light);
+                   line-height: 1.7; }
+.header-badge    { display: inline-block; background: var(--color-primary); color: #fff;
+                   font-size: 8px; font-weight: 700; padding: 3px 10px;
+                   border-radius: 20px; letter-spacing: 0.6px; text-transform: uppercase;
+                   margin-bottom: 2px; }
+
+/* ── INTRO-BLOCK ─────────────────────────────────────────── */
+.intro-block {
+  border-left: 3px solid var(--color-primary);
+  padding: 8px 12px;
+  background: var(--color-bg-light);
+  border-radius: 0 7px 7px 0;
+  margin-bottom: 12px;
+  font-size: 10.5px;
+  color: #333;
+  line-height: 1.65;
+}
+
+/* ── PHASE-HEADER ────────────────────────────────────────── */
+.phase-header   { display: flex; align-items: flex-start; gap: 9px; margin-bottom: 9px; }
+.phase-badge    { background: var(--color-primary); color: #fff; font-size: 7.5px;
+                  font-weight: 700; padding: 4px 9px; border-radius: 4px;
+                  text-transform: uppercase; letter-spacing: 0.6px;
+                  flex-shrink: 0; margin-top: 2px; }
+.phase-title    { font-size: 13.5px; font-weight: 800; color: var(--color-text);
+                  letter-spacing: -0.2px; line-height: 1.2; }
+.phase-subtitle { font-size: 8.5px; color: var(--color-text-secondary); margin-top: 2px;
+                  line-height: 1.4; }
 
 /* ── FOOTER ─────────────────────────────────────────────── */
 .doc-footer {
   border-top: 1px solid var(--color-border);
-  padding-top: 12px;
+  padding-top: 8px;
   margin-top: auto;
   display: flex;
   justify-content: space-between;
   align-items: flex-end;
-  font-size: 9px;
+  font-size: 7.5px;
   color: var(--color-text-light);
-  line-height: 1.6;
+  line-height: 1.65;
 }
-.doc-footer a { color: var(--color-text-light); text-decoration: none; }
+.doc-footer strong { color: #666; }
+.doc-footer a      { color: var(--color-primary); text-decoration: none; }
+
+/* ── INFO-CARDS ──────────────────────────────────────────── */
+.info-grid      { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px;
+                  margin-bottom: 12px; }
+.info-card      { background: var(--color-bg-subtle); border: 1px solid var(--color-border);
+                  border-radius: 7px; padding: 9px 11px; }
+.info-card-label  { font-size: 7.5px; text-transform: uppercase; letter-spacing: 1px;
+                    color: var(--color-text-muted); font-weight: 600; margin-bottom: 3px; }
+.info-card-value  { font-size: 12px; font-weight: 800; color: var(--color-text);
+                    margin-bottom: 3px; letter-spacing: -0.2px; }
+.info-card-detail { font-size: 9px; color: var(--color-text-secondary); line-height: 1.6; }
 
 /* ── TABELLEN ───────────────────────────────────────────── */
-table {
-  width: 100%;
-  border-collapse: collapse;
-  margin-bottom: 8px;
-  font-size: 10.5px;
-}
+table   { width: 100%; border-collapse: collapse; margin-bottom: 8px; font-size: 9.5px; }
+thead tr { background: var(--color-bg-light); }
 thead th {
-  background: var(--color-bg-table);
-  font-weight: 600;
-  text-align: left;
-  padding: 6px 8px;
-  font-size: 9.5px;
-  text-transform: uppercase;
-  letter-spacing: 0.4px;
-  color: #444;
-  border-bottom: 1px solid #ddd;
+  padding: 5px 8px; text-align: left;
+  font-size: 7.5px; font-weight: 700;
+  text-transform: uppercase; letter-spacing: 0.7px;
+  color: var(--color-text-muted);
+  border-bottom: 1.5px solid var(--color-border);
 }
 tbody td {
   padding: 5px 8px;
   border-bottom: 1px solid var(--color-border-light);
   vertical-align: top;
+  color: #333;
 }
-.text-right  { text-align: right; }
-.font-semibold { font-weight: 600; }
-.row-sum td {
-  border-top: 2px solid var(--color-text);
-  font-weight: 700;
-  padding-top: 8px;
-  font-size: 11px;
-}
+.text-right  { text-align: right; white-space: nowrap; }
+.td-label    { font-size: 8px; color: var(--color-text-light); font-style: italic; }
+.row-sum     { background: var(--color-bg-tint);
+               border-top: 1.5px solid var(--color-border-tint) !important; }
+.row-sum td  { font-weight: 700; color: var(--color-text); }
+.row-vat td  { color: var(--color-text-secondary); font-size: 9px; }
+.row-ne      { color: var(--color-text-light) !important; font-style: italic !important;
+               font-size: 8.5px !important; }
 
-/* ── TOTAL-BAR (Grand Total — IMMER diese Komponente verwenden) ── */
+/* ── TOTAL-BAR (Grand Total — IMMER diese Komponente) ─── */
 .total-bar {
-  background: var(--color-text);
+  background: var(--color-dark);
   color: #fff;
   border-radius: 8px;
-  padding: 12px 16px;
+  padding: 10px 13px;
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-top: 16px;
-  margin-bottom: 18px;
+  margin-bottom: 11px;
 }
-.total-bar .label  { font-size: 12px; font-weight: 500; }
-.total-bar .amount { font-size: 18px; font-weight: 700; letter-spacing: -0.01em; }
+.total-bar .label       { font-size: 10.5px; font-weight: 700; }
+.total-bar .sub         { font-size: 8px; color: #888; margin-top: 2px; }
+.total-bar .amount-main { font-size: 19px; font-weight: 800; letter-spacing: -0.3px;
+                          line-height: 1; text-align: right; }
+.total-bar .amount-note { font-size: 7.5px; color: #888; margin-top: 2px; text-align: right; }
 
-/* ── NOTE-CARDS (Scope / Notizen) ───────────────────────── */
-.notes-grid {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 12px;
-  margin: 16px 0;
-}
-.note-card {
-  background: var(--color-bg-info);
-  border: 1px solid #eee;
-  border-radius: 8px;
-  padding: 10px 12px;
-  font-size: 9.5px;
-  line-height: 1.55;
-}
+/* ── SUMMARY-BOX (Gesamtübersicht) ─────────────────────── */
+.summary-box { background: var(--color-bg-tint); border: 1px solid var(--color-border-tint);
+               border-radius: 8px; padding: 11px 13px; margin-bottom: 11px; }
+.summary-row { display: flex; justify-content: space-between; align-items: center;
+               padding: 4px 0; font-size: 10px; border-bottom: 1px solid #d4def8; }
+.summary-row:last-child  { border-bottom: none; padding-top: 7px;
+                            font-size: 13px; font-weight: 800; }
+.summary-label           { color: var(--color-text-secondary); }
+.summary-row:last-child .summary-label { color: var(--color-text); }
+.summary-value           { font-weight: 600; color: var(--color-text); white-space: nowrap; }
+.summary-row:last-child .summary-value { color: var(--color-primary); font-size: 15px; }
+
+/* ── NOTE-CARDS ─────────────────────────────────────────── */
+.notes-grid    { display: grid; grid-template-columns: 1fr 1fr; gap: 8px;
+                 margin-bottom: 11px; }
+.note-card     { border-radius: 7px; padding: 9px 11px; }
 .note-card-full { grid-column: 1 / -1; }
-.note-card h4 {
-  font-size: 10px;
-  font-weight: 600;
-  margin-bottom: 4px;
-  text-transform: uppercase;
-  letter-spacing: 0.3px;
+.note-card h4, .note-card-title { font-size: 8px; font-weight: 700;
+                                   text-transform: uppercase; letter-spacing: 1px;
+                                   margin-bottom: 6px; }
+/* Included — blau-getönt, elegant */
+.note-card.included { background: var(--color-bg-tint);
+                      border: 1px solid var(--color-border-tint); }
+/* Excluded — warm-amber, nicht aggressiv */
+.note-card.excluded { background: var(--color-bg-warm);
+                      border: 1px solid var(--color-border-warm); }
+/* Info — neutral grau */
+.note-card.info     { background: var(--color-bg-subtle);
+                      border: 1px solid var(--color-border); }
+.note-card.included h4, .note-card.included .note-card-title { color: var(--color-primary); }
+.note-card.excluded h4, .note-card.excluded .note-card-title { color: #c07010; }
+.note-card.info h4,     .note-card.info .note-card-title     { color: var(--color-text-secondary); }
+.note-card ul { list-style: none; display: flex; flex-direction: column; gap: 3px; }
+.note-card li { display: flex; gap: 6px; align-items: flex-start;
+                font-size: 8.5px; color: #444; line-height: 1.4; }
+.note-card li::before            { content: "–"; color: var(--color-text-light); flex-shrink: 0; }
+.note-card.included li::before   { content: "✓"; color: var(--color-primary); font-weight: 700; }
+.note-card.excluded li::before   { content: "○"; color: #c07010; }
+
+/* ── SOURCE-NOTE (Quellennachweis) ──────────────────────── */
+.source-note {
+  font-size: 7.5px; color: var(--color-text-light); font-style: italic;
+  line-height: 1.55; margin-bottom: 10px;
+  padding: 6px 10px;
+  background: var(--color-bg-subtle);
+  border-radius: 4px;
+  border-left: 2px solid var(--color-border);
 }
-.note-card.included h4 { color: #16a34a; }
-.note-card.excluded h4 { color: #dc2626; }
-.note-card.info h4     { color: var(--color-primary); }
-.note-card ul { list-style: none; padding: 0; }
-.note-card li { padding-left: 12px; position: relative; margin-bottom: 2px; color: #555; }
-.note-card li::before { content: "–"; position: absolute; left: 0; color: #999; }
+.source-note strong { color: var(--color-text-muted); font-style: normal; }
 
 /* ── INFO-SECTION ───────────────────────────────────────── */
-.info-section {
-  background: var(--color-bg-info);
-  border: 1px solid #eee;
-  border-radius: 8px;
-  padding: 12px 14px;
-  margin-bottom: 16px;
-}
-.info-grid {
-  display: grid;
-  grid-template-columns: repeat(2, 1fr);
-  gap: 16px;
-  margin: 16px 0;
-}
-.info-row { display: flex; gap: 12px; margin-bottom: 4px; font-size: 10.5px; }
-.info-label { color: var(--color-text-secondary); min-width: 80px; }
-.info-value { font-weight: 500; }
+.info-section { background: var(--color-bg-subtle); border: 1px solid var(--color-border);
+                border-radius: 7px; padding: 10px 12px; margin-bottom: 12px; }
+.info-row     { display: flex; gap: 10px; margin-bottom: 3px; font-size: 10px; }
+.info-label   { color: var(--color-text-muted); min-width: 80px; }
+.info-value   { font-weight: 600; color: var(--color-text); }
 
 /* ── SCREEN-VORSCHAU ────────────────────────────────────── */
 @media screen {
-  body { background: #e5e5e5; padding: 20px 0; }
-  .page {
-    background: #fff;
-    box-shadow: 0 2px 20px rgba(0,0,0,0.1);
-    border-radius: 4px;
-    margin-bottom: 20px;
-  }
+  body { background: #c8c8c8; padding: 24px 20px; }
+  .page { background: #fff; padding: 14mm; margin: 0 auto 24px; max-width: 210mm;
+          box-shadow: 0 8px 40px rgba(0,0,0,0.15); border-radius: 3px; }
 }
 
 /* ── DRUCK-OPTIMIERUNG ──────────────────────────────────── */
@@ -662,19 +756,21 @@ Für Leistungsverzeichnisse, Kostenpositionen, etc.:
   <div>
     <strong>[company.name]</strong><br>
     [company.address]<br>
-    [company.registration.fn] · [company.registration.uid]
+    [company.registration.fn] · [company.registration.uid]<br>
+    [company.directors falls vorhanden]
   </div>
   <div style="text-align:center;">
-    Tel: [company.contact.phone]<br>
+    [company.contact.phone]<br>
     <a href="mailto:[company.contact.email]">[company.contact.email]</a>
   </div>
   <div style="text-align:right;">
+    Seite [N] von [Gesamt]<br>
     <a href="https://[company.contact.website]">[company.contact.website]</a>
   </div>
 </div>
 ```
 
-> **Regel:** Footer enthält KEINE Seitenzahl auf dem Deckblatt. Auf Inhaltsseiten kann `Seite [N]` rechts ergänzt werden.
+> **Regel:** Deckblatt hat keine Seitenzahl. Auf allen anderen Seiten: „Seite N von Gesamt" rechts im Footer.
 
 ### 4.8 Formatierungsregeln
 
@@ -688,6 +784,91 @@ Datum:     "20.03.2026"       (DD.MM.YYYY)
 **JavaScript-Äquivalent (nicht nötig — direkt als String im HTML):**
 - Formatiere Zahlen manuell: Tausenderpunkte setzen, Dezimalkomma
 - Daten: DD.MM.YYYY
+
+---
+
+## PHASE 4.9 — QUALITÄTSTOR: RECHTSCHREIBUNG & QUELLENKONFORMITÄT
+
+> **Pflicht:** Führe diesen Schritt NACH der HTML-Generierung und VOR Phase 5 (PDF-Lieferung) durch.
+> Bei gefundenen Fehlern: HTML per StrReplace korrigieren, dann Prüfung wiederholen.
+
+### 4.9.1 Rechtschreibprüfung (Deutsch/Österreich)
+
+Scanne alle sichtbaren Textelemente im generierten HTML auf folgende Fehler:
+
+**Häufige Fehler (österreichisches Deutsch):**
+
+| Falsch | Richtig |
+|--------|---------|
+| daß | dass |
+| muß, muß | muss |
+| Mwst., mwst | MwSt. oder USt. |
+| önorm, ÖNorm | ÖNORM (immer Großschreibung, Leerzeichen: ÖNORM B 1801-1) |
+| BRI, bri | BRI (immer Großschreibung) |
+| Quadratmeter (ausgeschrieben in Tabellen) | m² |
+| Kubikmeter (ausgeschrieben in Tabellen) | m³ |
+| GmbH. | GmbH (kein Punkt) |
+| Dipl.-Ing | Dipl.-Ing. (mit Punkt) |
+
+**Einheitliche Schreibweise erzwingen:**
+- Maßeinheiten: immer mit Leerzeichen → `155 m²`, `4.500 €/m²`, `2.520 m³`
+- Währungsformat: konsistent im ganzen Dokument (`4.500,00 €` oder `€ 4.500` — nie mischen)
+- Firmennamen: exakt wie angegeben — `Eco Chalets GmbH` (kein `eco chalets gmbh`)
+
+### 4.9.2 Terminologische Konsistenz
+
+Prüfe, ob gleiche Konzepte gleich benannt sind:
+
+- Kein Wechsel zwischen „Nutzfläche" und „Wohnnutzfläche" ohne Erklärung
+- Abkürzungen beim ersten Vorkommen ausschreiben: „Haustechnik (HKLS: Heizung, Klima, Lüftung, Sanitär)"
+- Nummerierungen konsistent: entweder immer „Phase 1 / Phase 2" oder „Abschnitt 1 / Abschnitt 2"
+
+### 4.9.3 Quellenkonformität
+
+Für jeden Zahlenwert oder normativen Verweis im Dokument:
+
+1. **Rückverfolgung prüfen:** Hat dieser Wert einen `sources`-Eintrag im Datenmodell?
+2. **Im Dokument kennzeichnen:**
+   - Aus beigefügter Datei → `gem. [Dateiname], S. X` (in source-note)
+   - Nutzerangabe → `gem. Kundenangabe`
+   - Berechnet → Formel sichtbar machen: `14 × 20 × 9,0 m = 2.520 m³`
+   - Normwert → `[ÖNORM-Nr.], Abschn. X`
+   - **Ohne Beleg → explizit als „Annahme:" ausweisen**
+
+3. **Quellen-Konsistenzregel:** Wenn Werte aus einer Sachverständigen-Empfehlung oder Norm stammen, den exakten Richtwert (nicht einen gerundeten) angeben und Bandbreite nennen, falls vorhanden (z. B. „30–50 €/m³, Ansatz: 40 €/m³").
+
+### 4.9.4 Zahlen-Kreuzprüfung
+
+Führe diese Rechnungen erneut durch und vergleiche mit dem HTML:
+
+```
+☐ Alle Zeilensummen:         Einzelwerte × Menge = Zeilenbetrag
+☐ Zwischensummen:            ΣZeilen = Zwischensumme
+☐ Prozentaufgliederungen:    ΣAnteile = 100 %
+☐ Steuern:                   netto × 0,20 = USt. ; netto + USt. = brutto
+☐ Fläche / Kubatur:          L × B = m² ; L × B × H = m³
+☐ Per-Einheit:               m² × €/m² = Betrag
+☐ Gesamtsummen:              ΣPhasen = Gesamtinvestition
+```
+
+Bei Abweichung: direkt per StrReplace im HTML korrigieren.
+
+### 4.9.5 QA-Bericht ausgeben
+
+Gib vor Phase 5 kompakt aus:
+
+```
+─────────────────────────────────────────────────────────
+QA-BERICHT — Qualitätstor vor PDF-Generierung
+─────────────────────────────────────────────────────────
+RECHTSCHREIBUNG    ✅ Keine Fehler  / ⚠️  [N Korrekturen vorgenommen]
+TERMINOLOGIE       ✅ Konsistent    / ⚠️  [Hinweis]
+QUELLENANGABEN     ✅ [N] Werte belegt, [M] als Annahme markiert
+                   ⚠️  [N Werte ohne Beleg gefunden und markiert]
+ZAHLENPRÜFUNG      ✅ Alle Summen korrekt  / ❌ [Korrektur vorgenommen]
+─────────────────────────────────────────────────────────
+→ Weiter mit Phase 5 (PDF-Lieferung)
+```
 
 ---
 
@@ -815,58 +996,154 @@ END_CHANGELOG
 
 ## DESIGN-SYSTEM CHEAT-SHEET
 
-### Farben
+### Farbpalette
+
 ```
---color-primary:   #2F4538  (Waldgrün — für Header-Linie, Buttons, Akzente)
---color-text:      #1a1a1a  (Haupttext — AUCH für section-title!)
---color-secondary: #666     (Untertitel, Metainfo)
---color-light:     #999     (Footer, Anmerkungen)
---color-bg-table:  #F4F4F4  (Tabellen-Header)
---color-bg-info:   #FAFAFA  (Info-Boxen, Note-Cards)
---color-border:    #e0e0e0  (Linien)
+── MARKENFARBEN ────────────────────────────────────────────
+--color-primary:     #3D6CE1   Hoam Blau — Standard-Akzent
+--color-primary-alt: #2F4538   Waldgrün — nur für Natur-/Forstdokumente
+--color-dark:        #1a1a1a   Total-Bar-Hintergrund, starke Anker
+
+── TEXTHIERARCHIE ──────────────────────────────────────────
+--color-text:            #1a1a1a   Haupttext, Überschriften
+--color-text-secondary:  #555555   Beschreibungen, Untertitel, td-label
+--color-text-muted:      #888888   Labels, Metainfos, Spaltenköpfe
+--color-text-light:      #aaaaaa   Footer, Quellenhinweise, Platzhalter
+
+── HINTERGRÜNDE ────────────────────────────────────────────
+--color-bg-light:  #f4f4f4   Tabellen-Header, Intro-Block
+--color-bg-subtle: #fafafa   Karten, neutrale Boxen
+--color-bg-tint:   #eef2ff   Blau-Tinte: Included-Cards, Summary, Highlight
+--color-bg-warm:   #fff8f0   Warm-Tinte: Excluded-Cards, Hinweise
+
+── RAHMEN ──────────────────────────────────────────────────
+--color-border:       #e0e0e0   Standardrahmen
+--color-border-light: #f0f0f0   Tabellen-Zeilen
+--color-border-tint:  #c7d4f8   Rahmen für Blau-Tinte-Bereiche
+--color-border-warm:  #efd9b4   Rahmen für Warm-Tinte-Bereiche
 ```
 
-> Alternatives Primary für andere Dokumenttypen: `#3D6CE1` (Blau)
+**Regel: Farbdisziplin**
+- Max. **2 Akzentfarben** pro Dokument (primary + 1 Support)
+- `--color-primary` (`#3D6CE1`) für: Header-Linie, Badges, `included`-Cards, Links, Summary-Total
+- `#c07010` (Bernstein) für: `excluded`-Cards — nie Rot, nie Grün
+- `--color-dark` (`#1a1a1a`) für: `total-bar`-Hintergrund ausschließlich
+- Hintergrundtöne: nur die definierten Tints verwenden — keine weiteren Farben erfinden
 
 ### Typografie
+
 ```
-Font:         Geist (via Google Fonts CDN — immer laden!)
-Body:         11px / 1.5 / #1a1a1a
-Cover-Titel:  36px / 700 / letter-spacing: -0.03em
-Section:      20px / 700 / #1a1a1a  ← NICHT primary color
-Subsection:   13px / 700
-Tabelle:      10.5px
-Footer:       9px
+Font:          Geist (Google Fonts CDN — immer <link> in <head>!)
+Fallback:      -apple-system, BlinkMacSystemFont, 'Segoe UI', Arial
+
+Body:          10.5px / 1.5 / #1a1a1a
+Cover-Titel:   34px / 800 / #1a1a1a / letter-spacing: -0.03em
+Section-Titel: 18px / 800 / #1a1a1a  ← NIEMALS primary color
+Subsection:    11.5px / 700
+Tabelle:       9.5px / body
+Spaltenköpfe:  7.5px / 700 / uppercase / letter-spacing: 0.7px / #888
+td-label:      8px / italic / #aaa
+Footer:        7.5px / #aaa
+Source-Note:   7.5px / italic / #aaa
+```
+
+### Abstände & Formen
+
+```
+@page Ränder (dichte Dokumente):    14mm 14mm 16mm 14mm
+@page Ränder (luftige Dokumente):   18mm 16mm 20mm 16mm
+
+Border-Radius:  4px  (source-note, kleine Elemente)
+                7px  (Karten, note-cards, info-cards, info-section)
+                8px  (total-bar, summary-box)
+               20px  (header-badge, Pill-Labels)
+
+Header-Linie:   2.5px solid var(--color-primary)
+Karten-Rahmen:  1px solid (color-border oder color-border-tint)
+Tabellen-Kopf:  1.5px solid var(--color-border)
+Zellentrennlinie: 1px solid var(--color-border-light)
+
+Cell padding:   5px 8px (dicht)  /  6px 10px (luftig)
+Section gap:    11–13px (margin-bottom zwischen Blöcken)
 ```
 
 ### Komponenten-Inventar
+
 ```
-.page              → A4-Seitencontainer (210mm × 297mm min-height)
-.doc-header        → Logo links + Meta rechts + 2px primary Trennlinie
-.doc-footer        → 3-spaltig: Firma | Kontakt | Website
-.total-bar         → Schwarzer Balken für Brutto-Gesamtbetrag
-.note-card         → Scope-Karten (inkl. .included / .excluded / .info)
+.page              → A4-Seitencontainer, min-height: 267mm, flex-column
+.doc-header        → Logo+Wordmark links · Meta+Badge rechts · 2.5px primary Linie
+.logo-wordmark     → 21px / 800 / primary-color
+.logo-sub          → 7.5px / uppercase / muted
+.header-badge      → Pill in primary-color (inkl. USt., Vorentwurf, etc.)
+.intro-block       → Graue Box mit 3px primary Linksrand — Seiteneinleitung
+.phase-header      → Badge + Titel + Untertitel — für strukturierte Dokumente
+.phase-badge       → Kleines Rechteck in primary-color, border-radius 4px
+.info-grid         → 2-spaltiges Grid für .info-card
+.info-card         → Kompakte Datenkarte (subtle bg, 7px radius)
+table              → Kompakte Tabelle — 9.5px, 5px padding
+.row-sum           → Tint-Hintergrund + 1.5px tint-border → Zwischensumme
+.row-vat           → Steuerzeile (secondary text, kleiner)
+.row-ne            → Grau/kursiv für "nicht enthalten" / "nach Bedarf"
+.total-bar         → Schwarzer Balken für Grand Total (immer .label + .amount-main)
+.summary-box       → Blau-getönter Zusammenfassungsblock mit summary-rows
 .notes-grid        → 2-spaltiges Grid für note-cards
-.info-section      → Grauer Box-Container für Projektinfos
-.row-sum           → Tabellen-Summenzeile (2px Trennlinie oben)
+.note-card         → Scope-Karten (.included / .excluded / .info)
+.source-note       → Quellennachweis am Seitenende (7.5px italic, border-left)
+.info-section      → Grauer Box-Container für Projektinformationen
+.doc-footer        → 3-spaltig: Firma | Kontakt | Website+Seite
 ```
+
+### Design-Qualitätsregeln
+
+**Nicht überpopuliert:**
+- Max. 3 verschiedene Hintergrundfarben pro Seite
+- Max. 1 `total-bar` pro Seite
+- Max. 2 Badges/Pills pro Seite
+- Intro-Block nur auf Seite 1 — nicht auf jeder Seite wiederholen
+- `source-note` am Seitenende, nicht mitten im Inhalt platzieren
+
+**Elegante Formen:**
+- `border-radius` konsistent: 4px (mini) / 7px (standard) / 8px (prominent) / 20px (pill)
+- Keine Mischung von scharfen Ecken (0px) und stark abgerundeten (12px+)
+- Schlagschatten nur im Screen-Modus (`@media screen`), nie im Print
+
+**Farbakzente setzen, nicht übersetzen:**
+- Akzentfarbe zeigen wo sie sinnvoll ist: Header-Linie, Badges, Note-Card-Titel, Summary-Total
+- Tabellen-Header: graues `#f4f4f4` — niemals primary-Hintergrund
+- Zebrastreifen in Tabellen: nur wenn > 8 Zeilen, dann mit `#fafafa`
+- `total-bar` hat immer `#1a1a1a` Hintergrund — nie primary-blau
+
+**Lesbarkeitsregeln:**
+- Schwarzer Text (`#1a1a1a`) auf Weiß oder hellem Grau — immer
+- Weißer Text nur auf dunklem Hintergrund (`total-bar`, `phase-badge`, `header-badge`)
+- Keine helle Schrift auf farbigem Hintergrund (z. B. keine graue Schrift auf blauem Grund)
+- Mindestschriftgröße: 7.5px (nur für Footer/Quellen) — darunter nie
 
 ### Anti-Patterns (NIEMALS verwenden)
+
 ```
-❌ section-title in primary color (muss immer #1a1a1a sein)
-❌ Grand Total als table-row (immer .total-bar)
-❌ .scope-included / .scope-excluded (veraltet — immer .note-card.included/.excluded)
-❌ @page margin: 20mm 25mm (veraltet — immer 18mm 16mm 20mm 16mm)
-❌ Gesamte Datei neu schreiben bei Änderungen (immer StrReplace)
-❌ Inline-Styles für wiederholende Pattern (in <style> Block)
+❌ section-title in primary color — muss immer #1a1a1a sein
+❌ note-card.included mit grünem Title (#16a34a) — veraltet
+❌ note-card.excluded mit rotem Title (#dc2626) — zu aggressiv, veraltet
+❌ Grand Total als table-row — immer .total-bar
+❌ .scope-included / .scope-excluded — veraltet
+❌ @page margin: 20mm 25mm — veraltet
+❌ body font-size unter 10px — unleserlich
+❌ Gesamte Datei neu schreiben bei Änderungen — immer StrReplace
+❌ Inline-Styles für wiederholende Muster — in <style>-Block
+❌ Schatten im Druckbereich (nur @media screen)
+❌ Mehr als 3 verschiedene Hintergrundfarben auf einer Seite
+❌ Primary-Farbe als Tabellen-Header-Hintergrund
 ```
 
-### @page Regel (exakt)
+### @page Regel
+
 ```css
-@page {
-  size: A4;
-  margin: 18mm 16mm 20mm 16mm; /* top right bottom left */
-}
+/* Dichte Dokumente (Kostenpläne, Tabellen, Berichte mit vielen Inhalten): */
+@page { size: A4; margin: 14mm 14mm 16mm 14mm; }
+
+/* Luftige Dokumente (Angebote, Briefe, einseitige Übersichten): */
+@page { size: A4; margin: 18mm 16mm 20mm 16mm; }
 ```
 
 ---
@@ -875,33 +1152,63 @@ Footer:       9px
 
 Führe diese Checkliste ZWINGEND vor der PDF-Lieferung durch:
 
-### Design
+### Design & Layout
 - [ ] Geist-Font `<link>` in `<head>` vorhanden
-- [ ] `@page` Margin exakt `18mm 16mm 20mm 16mm`
-- [ ] Body font-size `11px` oder größer
-- [ ] `total-bar` für Brutto-Gesamtbetrag verwendet (falls Preise)
-- [ ] `.note-card` System für Scope-Abschnitte (nicht Legacy-Klassen)
+- [ ] `@page` Margin entspricht dem Dokumenttyp (dicht: 14mm / luftig: 18mm)
+- [ ] Body font-size `10.5px` oder größer
+- [ ] `total-bar` für Grand Total verwendet (falls Preise vorhanden) — nie table-row
+- [ ] `.note-card` System verwendet (.included / .excluded / .info) — keine Legacy-Klassen
 - [ ] `section-title` ist `#1a1a1a` — NICHT primary color
-- [ ] Footer ist parameter-frei und hat feste Firmendaten
+- [ ] Max. 2 Akzentfarben im Dokument
+- [ ] Max. 3 Hintergrundfarben pro Seite
+- [ ] `total-bar` Hintergrund ist `#1a1a1a` (nicht primary-blau)
+- [ ] Note-Card Farben: included = blau-getönt · excluded = warm-amber (NICHT grün/rot)
+- [ ] Alle `border-radius`-Werte konsistent (4 / 7 / 8 / 20px — keine Mischung)
+- [ ] Footer enthält Seitenzahl auf Inhaltsseiten (nicht auf Deckblatt)
+- [ ] `source-note` am Seitenende für zitierte Werte — wenn Normen/SV-Gutachten referenziert
 
-### Inhalt
-- [ ] Kein `[Platzhalter]`-Text mehr im Dokument
+### Inhalt & Vollständigkeit
+- [ ] Kein `[Platzhalter]`-Text im Dokument
 - [ ] Alle Felder aus dem Datenmodell befüllt
-- [ ] Zahlenformat korrekt (de: 1.234,56 · Datum: DD.MM.YYYY)
-- [ ] Währungssymbol korrekt (`€ 32.325`)
-- [ ] Preisberechnungen korrekt: net + vat = gross
+- [ ] Zahlenformat korrekt (de: `1.234,56 €` · Datum: `DD.MM.YYYY`)
+- [ ] Maßeinheiten korrekt: `155 m²`, `2.520 m³`, `4.500 €/m²` (Leerzeichen vor Einheit)
+- [ ] Preisberechnungen: `netto + USt. = brutto` geprüft
+- [ ] Firmendaten entsprechen dem Standard-Datensatz (Zösenberg 51, Weinitzen)
 
-### Datei
-- [ ] HTML-Datei ist in `generated-docs/` gespeichert
-- [ ] Datenmodell-Kommentar ist vollständig und valid JSON
+### Rechtschreibung & Terminologie (Phase 4.9)
+- [ ] Keine „daß", „muß" → „dass", „muss"
+- [ ] ÖNORM, BRI, GmbH korrekt geschrieben
+- [ ] Terminologie konsistent im gesamten Dokument
+- [ ] Abkürzungen beim ersten Vorkommen ausgeschrieben
+- [ ] QA-Bericht aus Phase 4.9 ausgegeben
+
+### Quellenkonformität (Phase 4.9)
+- [ ] Alle extrahierten Zahlenwerte im `sources`-Array des Datenmodells vermerkt
+- [ ] Annahmen explizit als „Annahme:" im Dokument gekennzeichnet
+- [ ] Normwerte mit Normbezeichnung + Abschnitt zitiert (z. B. ÖNORM B 1801-1)
+- [ ] Sachverständigen-Empfehlungen mit Autor, Titel, Jahr, Seite vermerkt (in source-note)
+- [ ] Bandbreiten aus Quellen genannt (z. B. „30–50 €/m³, Ansatz: 40 €/m³")
+
+### Zahlen-Kreuzprüfung (Phase 4.9)
+- [ ] ΣZeilen = Zwischensumme = Gesamtsumme
+- [ ] Prozentsätze ergeben 100 %
+- [ ] Flächen- und Kubaturberechnungen nachgerechnet
+- [ ] netto × Steuersatz = USt. · netto + USt. = brutto
+
+### Datei & Technisch
+- [ ] HTML-Datei gespeichert unter `generated-docs/[slug].html`
+- [ ] Datenmodell-Kommentar vollständig und valid JSON
 - [ ] CHANGELOG-Block vorhanden (auch wenn leer)
+- [ ] Kein JavaScript (pure HTML/CSS für Druckstabilität)
 
-### Visuell (nach Screenshot)
-- [ ] Deckblatt vollständig und zentriert
-- [ ] Keine Texte abgeschnitten
-- [ ] Tabellen passen auf die Seite
-- [ ] Seitenumbrüche an logischen Stellen
+### Visuell (nach Screenshot via browser_screenshot)
+- [ ] Kein abgeschnittener Text, kein Overflow
+- [ ] Tabellen passen in die Seitenbreite
+- [ ] Seitenumbrüche an logischen Stellen (nie mitten in Tabellen)
+- [ ] Deckblatt vollständig und zentriert (falls vorhanden)
+- [ ] Font sauber geladen (kein System-Fallback erkennbar)
+- [ ] Alle Hintergrundfarben sichtbar (print-color-adjust: exact aktiv)
 
 ---
 
-*Document Generator v1.0 · Basiert auf DOCUMENT_GENERATION_ARCHITECTURE.md + DOCUMENT_GENERATION_QUICK_START.md*
+*Document Generator v1.1 · Verbesserte Design-Qualität, Quellenkonformität & Rechtschreibprüfung*
