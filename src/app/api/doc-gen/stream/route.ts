@@ -56,7 +56,7 @@ export async function POST(request: NextRequest) {
   // Replace the last message with the enhanced one
   const enhancedMessages: ModelMessage[] = [
     ...messages.slice(0, -1),
-    { role: "user" as const, content: enhancedPrompt },
+    { role: "user" as const, content: enhancedPrompt as any },
   ];
 
   const model = getLanguageModel(modelId);
@@ -71,7 +71,7 @@ export async function POST(request: NextRequest) {
     messages: enhancedMessages,
     tools,
     stopWhen: stepCountIs(5), // Allow the agent to call tools up to 5 times iteratively
-    system: systemPrompt,
+    system: systemPrompt as any,
   });
 
   return result.toTextStreamResponse();
