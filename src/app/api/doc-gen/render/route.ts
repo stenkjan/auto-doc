@@ -9,6 +9,14 @@ function documentStyles(): string {
   return `
     @page { size: A4; margin: 18mm 16mm 20mm 16mm; }
 
+    /* ── CSS variables — overridable via <style> blocks in markdown ── */
+    :root {
+      --color-primary: #2F4538;
+      --color-dark: #1a1a1a;
+      --color-bg-subtle: #fafafa;
+      --color-border: #e0e0e0;
+    }
+
     * { box-sizing: border-box; margin: 0; padding: 0; }
 
     body {
@@ -253,14 +261,14 @@ export async function POST(request: NextRequest) {
       </a>
       <div class="header-meta">
         <strong>Hoam – Eco Chalets GmbH</strong><br>
-        Karmeliterplatz 8, 8010 Graz
+        Zösenberg 51, 8045 Weinitzen
       </div>
     </div>
 
     ${bodyHtml}
 
     <div class="doc-footer">
-      <div><strong>Eco Chalets GmbH</strong><br>Karmeliterplatz 8, 8010 Graz<br>FN 615495s · UID: ATU80031207</div>
+      <div><strong>Eco Chalets GmbH</strong><br>Zösenberg 51, 8045 Weinitzen<br>FN 615495s · UID: ATU80031207</div>
       <div style="text-align:center;">Tel: +43 (0) 664 3949605<br>mail@hoam-house.com</div>
       <div style="text-align:right;">hoam-house.com</div>
     </div>

@@ -182,5 +182,159 @@ export function createDocGenTools(sessionId: string) {
         }
       },
     }),
+
+    propose_document_plan: tool({
+      description:
+        "Erstellt einen strukturierten Plan-Entwurf für das angeforderte Dokument BEVOR es generiert wird. Zeigt dem Nutzer Dokumenttyp, geschätzte Seitenstruktur, erkannte Inhalte und offene Fragen. Warte auf Bestätigung des Nutzers bevor du das Dokument schreibst. Rufe dieses Tool bei JEDER neuen Dokumentanfrage zuerst auf.",
+      inputSchema: z.object({
+        documentType: z
+          .string()
+          .describe("Erkannter Dokumenttyp, z.B. 'Angebot', 'Kostenplanung', 'Bericht'"),
+        title: z
+          .string()
+          .describe("Vorgeschlagener Dokumenttitel"),
+        language: z
+          .string()
+          .describe("Dokumentsprache, z.B. 'de' oder 'en'"),
+        estimatedPages: z
+          .number()
+          .describe("Geschätzte Seitenanzahl"),
+        sections: z
+          .array(z.string())
+          .describe("Liste der geplanten Abschnitte/Seiten"),
+        hasPricing: z
+          .boolean()
+          .describe("Enthält das Dokument Preise oder Kostenpositionen?"),
+        detectedSources: z
+          .array(z.string())
+          .describe("Liste der erkannten Quellen/Referenzdokumente"),
+        ambiguities: z
+          .array(z.string())
+          .describe("Unklarheiten die vor der Generierung geklärt werden sollten"),
+        questions: z
+          .array(z.string())
+          .max(3)
+          .describe("Maximal 3 gezielte Rückfragen an den Nutzer"),
+      }),
+      execute: async ({
+        documentType,
+        title,
+        language,
+        estimatedPages,
+        sections,
+        hasPricing,
+        detectedSources,
+        ambiguities,
+        questions,
+      }: {
+        documentType: string;
+        title: string;
+        language: string;
+        estimatedPages: number;
+        sections: string[];
+        hasPricing: boolean;
+        detectedSources: string[];
+        ambiguities: string[];
+        questions: string[];
+      }) => {
+        return {
+          planReady: true,
+          summary: {
+            documentType,
+            title,
+            language,
+            estimatedPages,
+            sections,
+            hasPricing,
+            detectedSources,
+            ambiguities,
+            questions,
+          },
+          instruction:
+            "Zeige diese Zusammenfassung dem Nutzer im Format:\n" +
+            "╔══════════════════════════════════════════════════╗\n" +
+            "║  DOKUMENT-PLAN — Bitte bestätigen               ║\n" +
+            "╠══════════════════════════════════════════════════╣\n" +
+            `║  Typ:       ${documentType}\n` +
+            `║  Titel:     ${title}\n` +
+            `║  Sprache:   ${language}\n` +
+            `║  Seiten:    ~${estimatedPages}\n` +
+            `║  Abschnitte: ${sections.join(" · ")}\n` +
+            `║  Preise:    ${hasPricing ? "Ja" : "Nein"}\n` +
+            (detectedSources.length > 0 ? `║  Quellen:   ${detectedSources.join(", ")}\n` : "") +
+            "╚══════════════════════════════════════════════════╝\n" +
+            (ambiguities.length > 0 ? `\n⚠️ Unklarheiten:\n${ambiguities.map((a) => `- ${a}`).join("\n")}\n` : "") +
+            (questions.length > 0 ? `\nRückfragen:\n${questions.map((q, i) => `${i + 1}. ${q}`).join("\n")}\n\nBestätige mit „Ja" oder beantworte die Fragen.` : "\nBestätige mit „Ja" um zu starten."),
+        };
+      },
+    }),
+
+    validate_document: tool({
+      description:
+        "Prüft ein fertig generiertes Markdown-Dokument auf: Quellenkonformität (sind Annahmen markiert?), Zahlen-Konsistenz (stimmen Summen?), Terminologie-Einheitlichkeit und Rechtschreibfehler (österreichisches Deutsch). Rufe dieses Tool NACH der Dokument-Generierung auf bevor du die finale Antwort gibst.",
+      inputSchema: z.object({
+        markdown: z
+          .string()
+          .describe("Das fertig generierte Markdown-Dokument"),
+        language: z
+          .enum(["de", "en"])
+          .describe("Dokumentsprache für Rechtschreibprüfung"),
+        hasPricing: z
+          .boolean()
+          .describe("Enthält das Dokument Preisangaben die kreuzgeprüft werden sollen?"),
+      }),
+      execute: async ({
+        markdown,
+        language,
+        hasPricing,
+      }: {
+        markdown: string;
+        language: "de" | "en";
+        hasPricing: boolean;
+      }) => {
+        // Basic programmatic checks — AI performs the deeper semantic validation
+        const issues: string[] = [];
+
+        // Check for unfilled placeholders
+        const placeholders = markdown.match(/\[[A-ZÄÖÜ][^\]]{2,50}\]/g) ?? [];
+        if (placeholders.length > 0) {
+          issues.push(`${placeholders.length} ungefüllte Platzhalter gefunden: ${placeholders.slice(0, 5).join(", ")}`);
+        }
+
+        // German spelling quick checks
+        if (language === "de") {
+          if (/\bdaß\b/i.test(markdown)) issues.push("Veraltete Schreibweise 'daß' → 'dass'");
+          if (/\bmuß\b/i.test(markdown)) issues.push("Veraltete Schreibweise 'muß' → 'muss'");
+          if (/\bMwst\b/i.test(markdown)) issues.push("Schreibweise 'MwSt.' oder 'USt.' verwenden, nicht 'Mwst'");
+          if (/GmbH\./.test(markdown)) issues.push("'GmbH.' — kein Punkt nach GmbH");
+        }
+
+        // Check assumptions are labelled
+        const assumptionRequired = /\b(ca\.|ungefähr|etwa|schätzungsweise|angenommen|assume|approximately)\b/i.test(markdown);
+        const assumptionLabelled = /\bAnnahme:\b/i.test(markdown);
+        if (assumptionRequired && !assumptionLabelled) {
+          issues.push("Schätzwerte/Annahmen vorhanden aber nicht als 'Annahme:' gekennzeichnet");
+        }
+
+        return {
+          passed: issues.length === 0,
+          issueCount: issues.length,
+          issues,
+          hasPricing,
+          instruction: issues.length > 0
+            ? `Korrigiere diese ${issues.length} Problem(e) im Dokument bevor du die Antwort abschließt:\n${issues.map((i) => `- ${i}`).join("\n")}`
+            : "Keine Probleme gefunden. Dokument kann geliefert werden.",
+          qaReport:
+            `─────────────────────────────────────────\n` +
+            `QA-BERICHT\n` +
+            `─────────────────────────────────────────\n` +
+            `Platzhalter:  ${placeholders.length === 0 ? "✅ Keine" : `⚠️ ${placeholders.length} gefunden`}\n` +
+            `Rechtschreibung: ${language === "de" && issues.some((i) => i.includes("Schreibweise")) ? "⚠️ Korrekturen nötig" : "✅ OK"}\n` +
+            `Annahmen:     ${assumptionRequired && !assumptionLabelled ? "⚠️ Nicht gekennzeichnet" : "✅ OK"}\n` +
+            `Gesamtergebnis: ${issues.length === 0 ? "✅ Bestanden" : `❌ ${issues.length} Problem(e)`}\n` +
+            `─────────────────────────────────────────`,
+        };
+      },
+    }),
   };
 }

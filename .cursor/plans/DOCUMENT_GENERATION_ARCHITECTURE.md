@@ -1,16 +1,16 @@
 # Document Generation Architecture
-# Comprehensive Guide for Building Professional PDF-Ready HTML Documents
+# Comprehensive Guide for the auto-doc Platform and AI Document Generation
 
 ---
 
-**Purpose**: This document extracts the proven methodologies from Kostenplanung and Baukoordination
-generators to establish a reusable architectural pattern for creating high-quality, professional
-documents from structured data and AI-extracted content.
+**Purpose**: Documents the auto-doc platform architecture — from the AI engine and context system
+to TypeScript templates, the dynamic design system, connectors, and memory. Serves as the
+canonical reference for developers, AI agents, and template creators.
 
-**Target Audience**: Developers building the unified document generation platform, AI systems
-processing document requirements, and future template creators.
+**Target Audience**: Developers extending the platform, AI systems processing document requests,
+template creators, and agents using DOCUMENT_GENERATOR.md.
 
-**Version**: 1.0.0 (March 2026)
+**Version**: 2.0.0 (March 2026)
 
 ---
 
@@ -20,12 +20,17 @@ processing document requirements, and future template creators.
 2. [Architectural Patterns](#2-architectural-patterns)
 3. [Data Modeling Strategy](#3-data-modeling-strategy)
 4. [HTML Template Structure](#4-html-template-structure)
-5. [CSS Design System](#5-css-design-system)
+5. [Dynamic Design System](#5-dynamic-design-system)
 6. [Content Extraction from Sources](#6-content-extraction-from-sources)
 7. [AI Prompt Engineering](#7-ai-prompt-engineering)
 8. [Quality Assurance Checklist](#8-quality-assurance-checklist)
 9. [Implementation Workflow](#9-implementation-workflow)
 10. [Platform Integration](#10-platform-integration)
+10a. [AI Engine & Streaming](#10a-ai-engine--streaming)
+10b. [Context System](#10b-context-system)
+10c. [Memory System](#10c-memory-system)
+10d. [Sources & Connectors](#10d-sources--connectors)
+10e. [Render Route — Markdown → HTML Pipeline](#10e-render-route--markdown--html-pipeline)
 
 ---
 
@@ -70,34 +75,82 @@ From implementing Kostenplanung (8 pages) and Baukoordination (6 pages):
 
 ## 2. Architectural Patterns
 
+### 2.0 Platform Overview
+
+The platform operates through **two parallel generation pipelines** that share the same design system and quality standards:
+
+```
+┌─────────────────────────────────────────────────────────────────────┐
+│                     auto-doc PLATFORM                               │
+│                                                                     │
+│  Pipeline A: AI Engine (Prompt → Markdown → HTML)                  │
+│  ─────────────────────────────────────────────────                  │
+│  User Prompt ──► ai-engine.ts ──► Markdown ──► render/route.ts     │
+│                  + context               └──► marked → HTML        │
+│                  + memory                                           │
+│                  + sources (Drive/GitHub/MCP)                       │
+│                  + tools (validate, plan, ...)                      │
+│                                                                     │
+│  Pipeline B: Typed Templates (Data → TypeScript → HTML)            │
+│  ──────────────────────────────────────────────────                 │
+│  Structured Data ──► template/[type]/html-template.ts ──► HTML     │
+│  (via Zod schema)    (generateHTML function)                        │
+│                                                                     │
+│  Both pipelines output A4-print-ready HTML served via:             │
+│  /api/doc-gen/[id]  (templates)                                    │
+│  /api/doc-gen/render (markdown → HTML)                             │
+│  /api/doc-gen/stream (streaming AI generation)                     │
+└─────────────────────────────────────────────────────────────────────┘
+```
+
 ### 2.1 File Structure
 
-Each document type lives under `src/lib/doc-gen/templates/{document-type}/` with exactly three files:
-
-```
-src/lib/doc-gen/templates/{document-type}/
-├── index.ts          # Registration + DocumentTemplate<T> export via registerTemplate()
-├── types.ts          # Interfaces + Zod schema + compute*() + DEFAULT_*
-└── html-template.ts  # sharedStyles() + page renderers + generate*HTML()
-```
-
-> **Note:** `computations.ts`, `defaultData.ts`, and PascalCase `{DocumentType}Template.ts`
-> files are **not** part of the unified platform. Computation logic and default data live
-> inside `types.ts`. The template file uses kebab-case directory naming.
-
-Shared utilities live at the `doc-gen` level:
+Full platform structure under `src/lib/doc-gen/`:
 
 ```
 src/lib/doc-gen/
-├── formatters.ts          # Shared formatCurrency() and formatNumber() (Austrian locale)
-├── template-registry.ts   # DocumentTemplate<T> interface + registry map
-├── init.ts                # Calls registerTemplate() for each document type
-└── templates/
-    ├── cost-plan/
+├── ai-engine.ts            # Core AI generation (generateMarkdownDocument, buildSystemPrompt)
+├── context-registry.ts     # Client-safe context definitions (6 built-in)
+├── context-registry.server.ts # Server-side context loading
+├── drive-output.ts         # Google Drive upload integration
+├── formatters.ts           # formatCurrency() and formatNumber() — Austrian locale
+├── init.ts                 # Registers all templates via ensureTemplatesRegistered()
+├── memory.ts               # Vercel Blob-backed session memory
+├── models.ts               # AI model registry (Claude, Gemini, etc.)
+├── template-registry.ts    # DocumentTemplate<T> interface + registry Map
+├── tools.ts                # Vercel AI SDK tools for agent use
+├── web-scraper.ts          # URL content extraction
+│
+├── contexts/               # Context markdown files (domain-specific AI instructions)
+│   ├── general.md
+│   ├── cost-plan.md
+│   ├── baukoordination.md
+│   ├── report.md
+│   ├── financial-summary.md
+│   └── summary.md
+│
+├── rules/                  # System-level instructions
+│   ├── global-rules.md     # Company data, formatting, language rules
+│   ├── user-permissions.md
+│   └── document-types/
+│       └── cost-plan.md
+│
+├── sources/                # External data connectors
+│   ├── drive-source.ts     # Google Drive
+│   ├── github-source.ts    # GitHub repositories
+│   └── mcp-source.ts       # MCP servers
+│
+└── templates/              # Typed document generators (Pipeline B)
+    ├── cost-plan/          # index.ts + types.ts + html-template.ts
     ├── baukoordination/
     ├── financial-summary/
     └── report/
 ```
+
+Each template folder has exactly three files:
+- `index.ts` — Registration + `DocumentTemplate<T>` export
+- `types.ts` — TypeScript interfaces + Zod schema + `compute*()` + `DEFAULT_*`
+- `html-template.ts` — `sharedStyles()` + page renderers + `generate*HTML()`
 
 
 ### 2.2 Core Modules Explained
@@ -584,319 +637,117 @@ function renderInfoCards(cards: InfoCard[]): string {
 
 ---
 
-## 5. CSS Design System
+## 5. Dynamic Design System
 
-### 5.1 Essential @page Rule
+The design system is a **toolkit, not a template**. Components are activated selectively based on
+content type, user instructions, and agent reasoning — not applied wholesale to every document.
 
-```css
-@page {
-  size: A4;                         /* 210mm × 297mm */
-  margin: 18mm 16mm 20mm 16mm;      /* top right bottom left */
-}
-```
+### 5.0 Design-Reasoning Principle
 
-**Critical for:**
-- Consistent, space-efficient print margins
-- Proper page size in print/PDF
-- Professional print appearance
+Before generating HTML, the agent evaluates:
 
-> **Note:** Use `18mm 16mm 20mm 16mm` (asymmetric) — not the legacy `20mm 25mm`. The
-> asymmetric value recovers ~18mm of horizontal printable space per page, enabling
-> more content-dense layouts without increasing font sizes.
+1. **Document type/tone** → formal business letter, technical report, presentation, contract
+2. **Content signals** → heavy tables = compact margins; long prose = generous margins; financials = total-bar
+3. **User instructions** → explicit style preferences override all other decisions
+4. **Component necessity** → only activate components the content genuinely requires
 
-### 5.2 Typography Scale
+This reasoning produces a **Design Decision Protocol** (see `DOCUMENT_GENERATOR.md §3.5`) before any HTML is written.
 
-Always load Geist via Google Fonts — it is the canonical document font and produces
-a noticeably more professional output than system fallbacks:
+### 5.1 Standard Business Defaults
 
-```html
-<link href="https://fonts.googleapis.com/css2?family=Geist:wght@300;400;500;600;700&display=swap" rel="stylesheet">
-```
+These values apply when no specific signals indicate otherwise:
 
 ```css
-/* Base */
+@page { size: A4; margin: 16mm 16mm 18mm 16mm; }  /* Standard */
 body {
-  font-family: 'Geist', -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Helvetica Neue', Arial, sans-serif;
-  font-size: 11px;             /* Body text — do not go below 11px */
-  line-height: 1.5;
+  font-family: 'Geist', -apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, sans-serif;
+  font-size: 11px;
+  line-height: 1.6;
   color: #1a1a1a;
-}
-
-/* Hierarchy */
-.cover-title    { font-size: 36px; font-weight: 700; letter-spacing: -0.03em; } /* H1 - Cover */
-.section-title  { font-size: 20px; font-weight: 700; color: #1a1a1a; }          /* H2 - NOT primary color */
-.section-subtitle { font-size: 12px; color: #666; margin-bottom: 20px; }        /* Always pair with section-title */
-.subsection-title { font-size: 13px; font-weight: 700; }                        /* H3 - Subsections */
-
-/* Special contexts */
-table       { font-size: 10.5px; }
-.doc-footer { font-size: 9px; }
-```
-
-> **Key rule:** `.section-title` must use `color: #1a1a1a` (dark), **not** the
-> primary brand color. This keeps pages readable and avoids visual noise. Use
-> `.section-subtitle` beneath every major section heading for context.
-
-
-### 5.3 Color Palette
-
-**Professional & Austrian Business Standards:**
-
-```css
-:root {
-  /* Primary brand color */
-  --color-primary: #2F4538;      /* Professional green */
-  
-  /* Text colors */
-  --color-text: #1a1a1a;         /* Main text */
-  --color-text-secondary: #666;  /* Meta info */
-  --color-text-light: #999;      /* Footer, notes */
-  
-  /* Background colors */
-  --color-bg-table: #F4F4F4;     /* Table headers */
-  --color-bg-info: #FAFAFA;      /* Info boxes */
-  --color-bg-highlight: #F8F8F8; /* Totals, highlights */
-  
-  /* Border colors */
-  --color-border: #e0e0e0;
-  --color-border-light: #f0f0f0;
-}
-
-/* Application */
-.section-title { color: #1a1a1a; } /* dark — NOT primary color, see 5.2 */
-thead th { background: var(--color-bg-table); }
-```
-
-### 5.4 Spacing System
-
-```css
-/* Consistent spacing scale (8px base) */
-.spacing-xs { margin: 4px; }
-.spacing-sm { margin: 8px; }
-.spacing-md { margin: 16px; }
-.spacing-lg { margin: 24px; }
-.spacing-xl { margin: 32px; }
-
-/* Section spacing */
-.section-title { 
-  margin-top: 8px; 
-  margin-bottom: 12px; 
-}
-
-.subsection-title {
-  margin-top: 16px;
-  margin-bottom: 8px;
-}
-```
-
-### 5.5 Table Styling
-
-```css
-table {
-  width: 100%;
-  border-collapse: collapse;
-  margin-bottom: 8px;
-  font-size: 10.5px;
-}
-
-thead th {
-  background: #F4F4F4;
-  font-weight: 600;
-  text-align: left;
-  padding: 6px 8px;        /* tighter than 8px 10px — saves vertical space */
-  font-size: 9.5px;
-  text-transform: uppercase;
-  letter-spacing: 0.4px;
-  color: #444;
-  border-bottom: 1px solid #ddd;  /* 1px — not 2px */
-}
-
-tbody td {
-  padding: 5px 8px;
-  border-bottom: 1px solid #f0f0f0;
-  vertical-align: top;
-}
-
-/* Alignment helpers */
-.text-right  { text-align: right; }
-.font-semibold { font-weight: 600; }
-
-/* Subtotal row (before VAT) */
-.row-subtotal td {
-  border-top: 2px solid #1a1a1a;
-  padding-top: 8px;
-  font-size: 11px;
-}
-
-/* Sum row (table-internal totals) */
-.row-sum td {
-  border-top: 2px solid #1a1a1a;
-  font-weight: 700;
-  padding-top: 8px;
-  font-size: 11px;
-}
-```
-
-> **Deprecated:** `.row-total` (table row with heavy double border + grey background)
-> — this is replaced by the `total-bar` component (see 5.7). Never use a table row
-> for the final gross total; use `total-bar` instead.
-
-
-### 5.6 Print-Specific CSS
-
-```css
-/* Screen preview (development) */
-@media screen {
-  body {
-    background: #e5e5e5;
-    padding: 20px 0;
-  }
-  .page {
-    background: #fff;
-    box-shadow: 0 2px 20px rgba(0,0,0,0.1);
-    border-radius: 4px;
-    margin-bottom: 20px;
-  }
-}
-
-/* Print optimization */
-@media print {
-  body { 
-    padding: 0; 
-    background: white;
-  }
-  .page { 
-    padding: 0; 
-    max-width: none; 
-    min-height: auto;
-    box-shadow: none;
-  }
-}
-
-/* Ensure colors print */
-body {
   -webkit-print-color-adjust: exact;
   print-color-adjust: exact;
 }
 ```
 
-### 5.7 Component Patterns
+**Margin variants:**
+- `16mm 16mm 18mm 16mm` — Standard default (most documents)
+- `20mm 20mm 22mm 20mm` — Airy (letters, proposals, single-page)
+- `14mm 14mm 16mm 14mm` — Dense (cost plans, table-heavy reports)
 
-**Info Box:**
-```css
-.info-section {
-  background: #FAFAFA;
-  border: 1px solid #eee;
-  border-radius: 8px;
-  padding: 12px 14px;
-  margin-bottom: 16px;
-}
-```
+### 5.2 CSS Variables (Override System)
 
-**Grand Total Bar** *(canonical pattern — always use instead of a table row)*:
-```css
-.total-bar {
-  background: #1a1a1a;
-  color: #fff;
-  border-radius: 8px;
-  padding: 12px 16px;
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-top: 16px;
-  margin-bottom: 18px;
-}
-.total-bar .label  { font-size: 12px; font-weight: 500; }
-.total-bar .amount { font-size: 18px; font-weight: 700; letter-spacing: -0.01em; }
-```
-
-Usage:
-```html
-<div class="total-bar">
-  <span class="label">Gesamthonorar brutto (inkl. 20% USt.)</span>
-  <span class="amount">${formatCurrency(computed.totalGross)}</span>
-</div>
-```
-
-**Unified Note Cards** *(canonical pattern — replaces scope-included/scope-excluded)*:
-
-Use `.note-card` with `.included`, `.excluded`, or `.info` modifiers inside a `.notes-grid`. Never use custom `scope-included` / `scope-excluded` classes.
+All color values use CSS custom properties so markdown content or agent overrides can adjust them:
 
 ```css
-.notes-grid {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 12px;
-}
-.note-card {
-  background: #FAFAFA;
-  border: 1px solid #eee;
-  border-radius: 8px;
-  padding: 10px 12px;
-  font-size: 9.5px;
-  line-height: 1.55;
-}
-.note-card-full { grid-column: 1 / -1; }  /* spans full width */
-.note-card h4 {
-  font-size: 10px;
-  font-weight: 600;
-  margin-bottom: 4px;
-  text-transform: uppercase;
-  letter-spacing: 0.3px;
-}
-.note-card.included h4 { color: #16a34a; }
-.note-card.excluded h4 { color: #dc2626; }
-.note-card.info h4     { color: var(--color-primary); }
-.note-card ul { list-style: none; padding: 0; }
-.note-card li { padding-left: 12px; position: relative; margin-bottom: 2px; color: #555; }
-.note-card li::before { content: "–"; position: absolute; left: 0; color: #999; }
-```
-
-Usage:
-```html
-<div class="notes-grid">
-  <div class="note-card included">
-    <h4>Im Leistungsumfang enthalten</h4>
-    <ul><li>…</li></ul>
-  </div>
-  <div class="note-card excluded">
-    <h4>Nicht enthalten</h4>
-    <ul><li>…</li></ul>
-  </div>
-  <div class="note-card info note-card-full">
-    <h4>Ergänzende Angaben</h4>
-    <ul><li>…</li></ul>
-  </div>
-</div>
-```
-
-**Visual Separator / Header-Footer:**
-```css
-.doc-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: flex-start;
-  border-bottom: 2px solid var(--color-primary);
-  padding-bottom: 16px;
-  margin-bottom: 20px;
-}
-.doc-header a { text-decoration: none; }   /* logo is always a link */
-.logo-img { height: 32px; width: auto; }   /* header logo size */
-
-.doc-footer {
-  border-top: 1px solid #e0e0e0;
-  padding-top: 12px;
-  margin-top: auto;                         /* push to page bottom with flexbox */
-  display: flex;
-  justify-content: space-between;
-  font-size: 9px;
-  color: #999;
+:root {
+  --color-primary:      #2F4538;   /* Hoam brand green — default */
+  --color-dark:         #1a1a1a;   /* Total-bar background, anchors */
+  --color-text:         #1a1a1a;
+  --color-text-secondary: #555;
+  --color-text-muted:   #888;
+  --color-text-light:   #aaa;
+  --color-bg-subtle:    #fafafa;
+  --color-bg-light:     #f4f4f4;
+  --color-bg-tint:      #eef2ff;   /* Blue-tinted areas */
+  --color-bg-warm:      #fff8f0;   /* Amber-tinted areas */
+  --color-border:       #e0e0e0;
+  --color-border-light: #f0f0f0;
+  --color-border-tint:  #c7d4f8;
+  --color-border-warm:  #efd9b4;
 }
 ```
 
-> **Footer best practice:** Hard-code company data in `pageFooter()` — do not accept
-> a `data` parameter. This eliminates a class of potential null-reference errors and
-> keeps every footer consistent regardless of input data.
+> **Agent override:** When Design-Reasoning identifies a different primary color (e.g., from CI
+> in a reference file), inject a `<style>:root { --color-primary: [hex]; }</style>` block at the
+> top of the document body. All components automatically inherit the change.
+
+### 5.3 Typography Scale
+
+```
+Cover title:    34px / 800 / #1a1a1a / letter-spacing: -0.03em
+Section title:  18–20px / 700–800 / #1a1a1a   ← NEVER primary color
+Subsection:     12–13px / 700
+Body:           11px / 1.6
+Tables:         9.5–10.5px
+Table headers:  7.5–9.5px / uppercase / muted
+Footer:         7.5–9px
+Source notes:   7.5px / italic
+Minimum size:   7.5px (footer/sources only)
+```
+
+### 5.4 Component Toolkit
+
+Components are **opt-in** — only include what the content requires:
+
+| Component | When to use | Class |
+|---|---|---|
+| Page container | Always | `.page` |
+| Document header | All pages except cover | `.doc-header` |
+| Document footer | All pages | `.doc-footer` |
+| **Grand total bar** | Whenever a final gross total exists | `.total-bar` |
+| Note cards (scope) | Included/excluded scope sections | `.note-card.included/.excluded/.info` |
+| Source note | When citing norms, files, or SVs | `.source-note` |
+| Summary box | KPI dashboards, financial overviews | `.summary-box` |
+| Info cards grid | Key metrics, project facts | `.info-card` + `.info-grid` |
+| Phase header | Multi-phase documents (5+ sections) | `.phase-header` + `.phase-badge` |
+| Intro block | Page-level lead-in text | `.intro-block` (1× per page max) |
+| Table subtotal | Before VAT row | `.row-sum` |
+| VAT row | After subtotal | `.row-vat` |
+| N/A row | Items not yet priced | `.row-ne` |
+
+### 5.5 Anti-Patterns
+
+```
+❌ section-title in primary color — always #1a1a1a
+❌ Grand total as a table row — always .total-bar
+❌ .scope-included / .scope-excluded — deprecated
+❌ Green (#16a34a) or red (#dc2626) note-card titles — use blue-tint / amber
+❌ @page margin: 20mm 25mm — outdated
+❌ Hard-coding company address (Karmeliterplatz) — use Zösenberg 51, 8045 Weinitzen
+❌ Applying all components to every document — only use what content requires
+❌ Rewriting the entire file for amendments — always use targeted StrReplace
+❌ Shadows in print media — @media screen only
+```
 
 ---
 
@@ -1952,28 +1803,211 @@ ${data.items.length > 0 ? renderTable(data.items) : '<p>Keine Daten</p>'}
 
 ## 22. Conclusion
 
-This architecture represents proven patterns from generating professional Austrian construction
-documents. The key principles are:
+This architecture represents the dual-pipeline approach to professional document generation:
+TypeScript templates for structured, typed data; and the AI engine for natural-language-driven
+generation with contextual reasoning, dynamic design, and source traceability.
 
-1. **Data-First Design** - Structure drives everything
-2. **Modular Composition** - Pages are independent units
-3. **Standards Compliance** - Reference industry norms
-4. **Print Optimization** - Design for A4 from start
-5. **Type Safety** - TypeScript catches errors early
+Key principles across both pipelines:
 
-By following these patterns, new document types can be implemented efficiently while maintaining
-high quality and professional standards.
+1. **Dynamic Design** — Design is derived from content and user intent, not imposed by a fixed template
+2. **Source Traceability** — Every extracted value carries an origin tag (user input, file, calculation, norm, assumption)
+3. **Quality Gates** — Validation runs after generation: spelling, number cross-checks, source conformity
+4. **Modular Composition** — Pages and components are independent, activated only when needed
+5. **Connector-Ready** — Drive, GitHub, MCP sources feed context into generation
+6. **Memory-Enabled** — Session memory persists context across multi-turn document workflows
 
 **Success Metrics:**
-- Time to implement new type: ~15 hours
-- Generation speed: <100ms for 6-8 pages
-- Print quality: Professional, customer-ready
-- Maintenance: Minimal (data-driven)
+- Template generation speed: <100ms for 6-8 pages
+- AI generation (streaming): 10-40 seconds depending on complexity and model
+- Print quality: Professional, customer-ready on first attempt
+- Amendment precision: Targeted StrReplace — no full regeneration needed
 
 ---
 
-**Document Version:** 1.0.0  
-**Last Updated:** March 20, 2026  
-**Status:** Production-Ready  
+## 10a. AI Engine & Streaming
+
+**Files:** `src/lib/doc-gen/ai-engine.ts`, `src/app/api/doc-gen/stream/route.ts`
+
+The AI engine powers Pipeline A — natural language → Markdown → HTML.
+
+### System Prompt Architecture
+
+```typescript
+export async function buildSystemPrompt(contextId?: string): Promise<SystemPart[]> {
+  const globalRules = await loadContextContent("rules/global-rules.md");
+  const permissions = await loadContextContent("rules/user-permissions.md");
+  const context = await resolveContext(contextId ?? DEFAULT_CONTEXT_ID);
+  const contextContent = context ? await loadContextContent(context.filePath) : "";
+
+  return [
+    { type: "text", text: "[Agent identity + core instructions]" },
+    {
+      type: "text",
+      text: `--- SYSTEM CONTEXT ---\n${globalRules}\n${permissions}\n${contextContent}`,
+      providerOptions: { anthropic: { cacheControl: { type: "ephemeral" } } }
+      // ↑ Prompt caching — static context cached across turns
+    }
+  ];
+}
+```
+
+### User Message with Resources
+
+```typescript
+export function buildUserMessage(
+  prompt: string,
+  existingMarkdown?: string,
+  resources?: Resource[]
+): UserPart[]
+```
+
+When `resources` are provided, a meta-block is prepended:
+```
+[QUELLEN: 3 Dateien]
+- Datei: bericht.pdf (type: file)
+- Datei: bauplanung.docx (type: file)
+- URL: https://... (type: web)
+---
+[User prompt follows]
+```
+
+### Streaming Endpoint
+
+`/api/doc-gen/stream` — Accepts:
+```typescript
+{
+  messages: ModelMessage[];
+  modelId: string;
+  contextId?: string;
+  existingMarkdown?: string;
+  resources?: Resource[];
+  sessionId?: string;
+}
+```
+
+Uses `streamText` with `maxSteps: 5` (tool-calling agent loop) and `maxDuration: 300`.
+
+---
+
+## 10b. Context System
+
+**Files:** `src/lib/doc-gen/context-registry.ts`, `src/lib/doc-gen/context-registry.server.ts`
+
+Contexts are domain-specific markdown files that extend the system prompt with specialized knowledge.
+
+### Built-in Contexts
+
+| ID | Label | Specialization |
+|---|---|---|
+| `general` | Allgemein | General document assistant |
+| `cost-plan` | Kostenplanung | ÖNORM B 1801-1 cost estimation |
+| `baukoordination` | Baukoordination & ÖBA | ÖIBA LPH 1–9 coordination proposals |
+| `report` | Bericht & Protokoll | Status reports, minutes, analysis |
+| `financial-summary` | Finanzzusammenfassung | Financial reports, KPI dashboards |
+| `summary` | Zusammenfassung & Analyse | Document summarization |
+
+### Custom Contexts
+
+Users can create additional contexts via `POST /api/doc-gen/contexts`:
+- Stored as `.md` files in `src/lib/doc-gen/contexts/custom/`
+- Full CRUD via `/api/doc-gen/contexts` (GET, POST, PUT, DELETE)
+- Automatically available alongside built-in contexts
+
+---
+
+## 10c. Memory System
+
+**File:** `src/lib/doc-gen/memory.ts`
+
+Session-scoped memory backed by **Vercel Blob**. Enables multi-turn document workflows where context from earlier messages informs later ones.
+
+```typescript
+// Namespace: doc-gen/memory/{sessionId}/{key}.md
+await saveMemory(sessionId, "project-context", markdownText);
+const entries = await loadMemory(sessionId);
+await clearMemory(sessionId);
+```
+
+**Use cases:**
+- Storing extracted project metadata across multiple generation steps
+- Remembering user preferences within a session
+- Accumulating document iterations (changelog)
+
+---
+
+## 10d. Sources & Connectors
+
+**Files:** `src/lib/doc-gen/sources/`, `src/app/api/doc-gen/sources/`
+
+Three connector types fetch external content into document generation:
+
+| Connector | File | Config fields |
+|---|---|---|
+| Google Drive | `drive-source.ts` | `folderId`, `fileTypes` |
+| GitHub | `github-source.ts` | `owner`, `repo`, `path`, `branch` |
+| MCP Server | `mcp-source.ts` | `serverUrl`, `toolName`, `params` |
+
+Sources are stored in the database with full CRUD via `/api/doc-gen/sources`:
+- `GET /api/doc-gen/sources` — list all
+- `POST /api/doc-gen/sources` — create
+- `PATCH /api/doc-gen/sources/:id` — update
+- `DELETE /api/doc-gen/sources/:id` — delete
+
+Fetching: `POST /api/doc-gen/fetch-source { sourceId, query? }` — dispatches to the right connector and returns content as a `Resource` object.
+
+---
+
+## 10e. Render Route — Markdown → HTML Pipeline
+
+**File:** `src/app/api/doc-gen/render/route.ts`
+
+Converts AI-generated Markdown to print-ready A4 HTML.
+
+```
+POST /api/doc-gen/render
+Body: { markdown: string }
+Returns: styled HTML document
+```
+
+### Pipeline
+
+```
+markdown string
+    ↓
+marked.parse() — GFM, no hard breaks
+    ↓
+bodyHtml string
+    ↓
+wrap in HTML shell with:
+  - Geist font CDN link
+  - documentStyles() — full CSS with :root variables
+  - .doc-header (logo + company meta)
+  - .page-wrapper (A4 container)
+  - bodyHtml
+  - .doc-footer (company data)
+```
+
+### CSS Variables in Render Route
+
+The render route CSS exposes `:root` variables so markdown content can inject `<style>` blocks to override the design:
+
+```html
+<!-- In markdown content -->
+<style>:root { --color-primary: #3D6CE1; }</style>
+```
+
+### Company Data (canonical)
+
+```
+Eco Chalets GmbH · Zösenberg 51, 8045 Weinitzen
+FN 615495s · UID: ATU80031207
+Tel: +43 664 3949605 · mail@hoam-house.com · hoam-house.com
+```
+
+---
+
+**Document Version:** 2.0.0
+**Last Updated:** March 21, 2026
+**Status:** Production-Ready
 **Next Review:** June 2026
 

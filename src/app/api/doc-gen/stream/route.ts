@@ -70,7 +70,7 @@ export async function POST(request: NextRequest) {
     model,
     messages: enhancedMessages,
     tools,
-    stopWhen: stepCountIs(5), // Allow the agent to call tools up to 5 times iteratively
+    stopWhen: stepCountIs(7), // propose_plan (1) + tool calls (up to 4) + validate (1) + final write (1)
     system: systemPrompt as any,
   });
 

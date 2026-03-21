@@ -89,7 +89,7 @@ Du arbeitest in zwei Modi:
 
 | Modus | Trigger | Ablauf |
 |---|---|---|
-| **Generierungs-Modus** | Neues Dokument angefordert | Phasen 1 → 2 → 3 → 4 → 4.9 → 5 |
+| **Generierungs-Modus** | Neues Dokument angefordert | Phasen 1 → 2 → 3 → 3.5 → 4 → 4.9 → 5 |
 | **Amendment-Modus** | Änderung an bestehendem Dokument | Phase 6 (eigenständig) |
 
 **Erkennungsregel für Amendment-Modus:** Wenn der Prompt Wörter enthält wie *„ändere", „ersetze", „füge hinzu", „entferne", „aktualisiere", „passe an", „update", „change", „fix", „modify"* UND bereits eine Datei unter `generated-docs/` existiert → Amendment-Modus.
@@ -340,6 +340,80 @@ Prüfe vor dem Schreiben:
 
 ---
 
+## PHASE 3.5 — DESIGN-REASONING
+
+> Diese Phase läuft **intern** ab — kein User-Input nötig. Du stellst dir selbst 5 Fragen und gibst am Ende ein kompaktes **Design-Entscheidungs-Protokoll** aus. Erst danach beginnst du mit Phase 4 (HTML-Generierung).
+>
+> **Prioritätsregel:** Explizite User-Angaben > Inhalt/Quellen-Hinweise > Standard-Default > Spekulation
+
+### 3.5.1 — Frage 1: Was ist der Dokumenttyp und Ton?
+
+Bestimme Stil und Dichte anhand des erkannten Typs:
+
+| Typ | Stil-Profil |
+|---|---|
+| Formaler Geschäftsbrief / Angebot / Vertrag | Luftig · 11px · `20mm` Margins · neutrale Farben · wenige Komponenten |
+| Technischer Bericht / Kostenplan | Kompakt · 11px · `16mm` Margins · Tabellen-fokussiert · keine dekorativen Karten |
+| Präsentation / Zusammenfassung | Luftig · 11.5px · `20mm` Margins · info-cards · phase-badges · Akzentfarben |
+| Protokoll / Dokumentation | Neutral · 11px · `18mm` Margins · klare Hierarchie · source-notes wenn Quellen |
+
+### 3.5.2 — Frage 2: Gibt es Design-Hinweise im Inhalt oder Prompt?
+
+Prüfe in dieser Reihenfolge:
+
+1. **Nutzer-Prompt**: Enthält er Stil-Adjektive? → `"modern"` → weniger Trennlinien, mehr Weißraum · `"professionell"` → Standard-Default · `"minimalistisch"` → keine Karten/Badges · `"kompakt"` → engere Margins
+2. **Referenzdateien**: Sind Logos, Farbcodes oder CI-Angaben erkennbar? → Primärfarbe ggf. übernehmen
+3. **Inhaltsstruktur**: Viele Tabellen → dichtere Margins · Viel Fließtext → luftigere Margins · Viele Abschnitte (5+) → phase-header/badge · Financials → total-bar + summary-box
+
+### 3.5.3 — Frage 3: Welche Komponenten braucht dieses Dokument wirklich?
+
+Aktiviere **nur** Komponenten die der Inhalt konkret erfordert. NIEMALS alle auf einmal verwenden.
+
+| Inhalt enthält... | Aktivierte Komponente |
+|---|---|
+| Preise / Honorar / Kosten | `total-bar` (Pflicht) + `row-sum` + `row-vat` |
+| Leistungsumfang / Scope | `.note-card.included` + `.note-card.excluded` |
+| Quellenangaben / Normen | `.source-note` |
+| Viele benannte Abschnitte (5+) | `.phase-header` + `.phase-badge` |
+| KPIs / Kennzahlen | `.info-card` + `.info-grid` |
+| Einleitungstext pro Seite | `.intro-block` (max. 1× pro Seite) |
+| Übersicht / Zusammenfassung | `.summary-box` |
+| Reine Textseiten | Kein Spezial-Styling nötig |
+
+### 3.5.4 — Frage 4: Welche CSS-Werte weichen vom Standard ab?
+
+Evaluiere diese Werte und begründe Abweichungen:
+
+| CSS-Eigenschaft | Standard-Default | Anpassen wenn... |
+|---|---|---|
+| `body font-size` | `11px` | Technisch/dicht → `10.5px` · Präsentation → `11.5px` |
+| `@page` Margins | `16mm 16mm 18mm 16mm` | Luftig/Brief → `20mm 20mm 22mm 20mm` · Sehr dicht → `14mm 14mm 16mm 14mm` |
+| `line-height` | `1.6` | Tabellen-schwer → `1.5` |
+| `--color-primary` | `#2F4538` (Hoam Grün) | CI-Farbe aus Referenz erkannt → übernehmen · Financials/Tech → `#3D6CE1` |
+| `font-weight` Überschriften | `800` | Formeller Brief → `700` |
+
+### 3.5.5 — Design-Entscheidungs-Protokoll ausgeben
+
+Gib **vor Phase 4** kompakt aus (1 Block, keine langen Erklärungen):
+
+```
+──────────────────────────────────────────────────────
+DESIGN-ENTSCHEIDUNGEN
+──────────────────────────────────────────────────────
+Dokumenttyp:     [erkannt]
+Ton/Stil:        [formell / technisch / präsentativ / neutral]
+Primärfarbe:     [#hex] — [Grund: Standard / CI aus Referenz / User-Angabe]
+Body-Size:       [10.5 / 11 / 11.5px] — [Grund]
+Margins:         [dicht 16mm / standard 18mm / luftig 20mm] — [Grund]
+Schrift:         Geist — [Gewicht: 700 / 800] — [Grund]
+Aktiviert:       [Liste der Komponenten oder "Standard-Minimum"]
+Deaktiviert:     [Was und warum nicht]
+──────────────────────────────────────────────────────
+→ Weiter mit Phase 4 (HTML-Generierung)
+```
+
+---
+
 ## PHASE 4 — HTML-GENERIERUNG
 
 ### 4.1 Ausgabepfad
@@ -394,10 +468,12 @@ Kopiere diesen gesamten CSS-Block als `<style>`-Inhalt:
 /* ── SEITEN-LAYOUT ─────────────────────────────────────── */
 @page {
   size: A4;
-  /* Dichte Dokumente (Kostenpläne, Tabellen):  */
-  margin: 14mm 14mm 16mm 14mm;
-  /* Luftige Dokumente (Berichte, Angebote):
-     margin: 18mm 16mm 20mm 16mm; */
+  /* Standard-Default (geschäftlich, neutral):   */
+  margin: 16mm 16mm 18mm 16mm;
+  /* Luftige Dokumente (Briefe, Angebote):
+     margin: 20mm 20mm 22mm 20mm;              */
+  /* Sehr dichte Dokumente (Kostenpläne):
+     margin: 14mm 14mm 16mm 14mm;              */
 }
 
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
@@ -431,8 +507,8 @@ Kopiere diesen gesamten CSS-Block als `<style>`-Inhalt:
 body {
   font-family: 'Geist', -apple-system, BlinkMacSystemFont, 'Segoe UI',
                'Helvetica Neue', Arial, sans-serif;
-  font-size: 10.5px;
-  line-height: 1.5;
+  font-size: 11px;
+  line-height: 1.6;
   color: var(--color-text);
   -webkit-print-color-adjust: exact;
   print-color-adjust: exact;
@@ -1036,7 +1112,7 @@ END_CHANGELOG
 Font:          Geist (Google Fonts CDN — immer <link> in <head>!)
 Fallback:      -apple-system, BlinkMacSystemFont, 'Segoe UI', Arial
 
-Body:          10.5px / 1.5 / #1a1a1a
+Body:          11px / 1.6 / #1a1a1a
 Cover-Titel:   34px / 800 / #1a1a1a / letter-spacing: -0.03em
 Section-Titel: 18px / 800 / #1a1a1a  ← NIEMALS primary color
 Subsection:    11.5px / 700
@@ -1050,8 +1126,9 @@ Source-Note:   7.5px / italic / #aaa
 ### Abstände & Formen
 
 ```
-@page Ränder (dichte Dokumente):    14mm 14mm 16mm 14mm
-@page Ränder (luftige Dokumente):   18mm 16mm 20mm 16mm
+@page Ränder (Standard-Default):     16mm 16mm 18mm 16mm
+@page Ränder (luftige Dokumente):    20mm 20mm 22mm 20mm
+@page Ränder (sehr dichte Dokumente): 14mm 14mm 16mm 14mm
 
 Border-Radius:  4px  (source-note, kleine Elemente)
                 7px  (Karten, note-cards, info-cards, info-section)
@@ -1139,12 +1216,17 @@ table              → Kompakte Tabelle — 9.5px, 5px padding
 ### @page Regel
 
 ```css
-/* Dichte Dokumente (Kostenpläne, Tabellen, Berichte mit vielen Inhalten): */
-@page { size: A4; margin: 14mm 14mm 16mm 14mm; }
+/* Standard-Default (geschäftlich, neutral): */
+@page { size: A4; margin: 16mm 16mm 18mm 16mm; }
 
-/* Luftige Dokumente (Angebote, Briefe, einseitige Übersichten): */
-@page { size: A4; margin: 18mm 16mm 20mm 16mm; }
+/* Luftige Dokumente (Angebote, Briefe, Übersichten): */
+@page { size: A4; margin: 20mm 20mm 22mm 20mm; }
+
+/* Sehr dichte Dokumente (Kostenpläne, Tabellenschwer): */
+@page { size: A4; margin: 14mm 14mm 16mm 14mm; }
 ```
+
+> Der Agent wählt die passende Variante in Phase 3.5 (Design-Reasoning) und schreibt sie in den `<style>`-Block.
 
 ---
 
@@ -1154,8 +1236,8 @@ Führe diese Checkliste ZWINGEND vor der PDF-Lieferung durch:
 
 ### Design & Layout
 - [ ] Geist-Font `<link>` in `<head>` vorhanden
-- [ ] `@page` Margin entspricht dem Dokumenttyp (dicht: 14mm / luftig: 18mm)
-- [ ] Body font-size `10.5px` oder größer
+- [ ] `@page` Margin entspricht dem Dokumenttyp (Standard: 16mm · luftig: 20mm · sehr dicht: 14mm)
+- [ ] Body font-size `11px` oder größer (Abweichung nur per Design-Reasoning Phase 3.5 begründet)
 - [ ] `total-bar` für Grand Total verwendet (falls Preise vorhanden) — nie table-row
 - [ ] `.note-card` System verwendet (.included / .excluded / .info) — keine Legacy-Klassen
 - [ ] `section-title` ist `#1a1a1a` — NICHT primary color

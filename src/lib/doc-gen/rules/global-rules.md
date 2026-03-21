@@ -7,11 +7,12 @@
 
 ## Unternehmen
 - **Eco Chalets GmbH**
-- Karmeliterplatz 8, 8010 Graz, Österreich
+- Zösenberg 51, 8045 Weinitzen, Österreich
 - FN 615495s · UID: ATU80031207
-- Tel: +43 (0) 664 3949605
+- Tel: +43 664 3949605
 - E-Mail: mail@hoam-house.com
 - Web: hoam-house.com
+- GF: DI Markus Schmoltner & Bernhard Grentner
 
 ## Marke
 - Markenname: **Hoam**
@@ -21,3 +22,6 @@
 ## Qualität
 - Fehlende Pflichtfelder werden mit sinnvollen Standardwerten befüllt.
 - Optionale Felder dürfen leer gelassen werden.
+- **Kongruenzprüfung:** Bei jeder neuen Dokumentanfrage zuerst `propose_document_plan` aufrufen. Plan-Zusammenfassung anzeigen und auf Bestätigung warten — dann erst das vollständige Dokument generieren.
+- **Quellenkonformität:** Jeden Zahlenwert und normativen Verweis mit seiner Herkunft kennzeichnen. Annahmen explizit als „Annahme:" markieren.
+- **Qualitätstor:** Nach Fertigstellung des Dokuments `validate_document` aufrufen. Gefundene Probleme vor der finalen Ausgabe korrigieren.
