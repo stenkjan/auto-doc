@@ -76,6 +76,26 @@ export const AI_MODELS: AIModel[] = [
   },
   // ── Paid models (Anthropic direct) ─────────────────────────────────
   {
+    id: "anthropic/claude-3-5-haiku-20241022",
+    provider: "anthropic",
+    label: "Claude 3.5 Haiku",
+    description: "Schnell & günstig – ideal für einfache Dokumente",
+    contextWindow: "200k",
+    paid: true,
+    supportsHtmlOutput: true,
+    pricing: { inputPerM: 0.8, outputPerM: 4.0 },
+  },
+  {
+    id: "anthropic/claude-3-5-sonnet-20241022",
+    provider: "anthropic",
+    label: "Claude 3.5 Sonnet",
+    description: "Ausgewogen – hohe Präzision bei großem Kontext",
+    contextWindow: "200k",
+    paid: true,
+    supportsHtmlOutput: true,
+    pricing: { inputPerM: 3.0, outputPerM: 15.0 },
+  },
+  {
     id: "anthropic/claude-sonnet-4-5",
     provider: "anthropic",
     label: "Claude Sonnet 4.5",
@@ -107,6 +127,26 @@ export const AI_MODELS: AIModel[] = [
     pricing: { inputPerM: 3.0, outputPerM: 15.0 },
   },
   {
+    id: "openrouter/anthropic/claude-3-5-sonnet",
+    provider: "openrouter",
+    label: "Claude 3.5 Sonnet (OR)",
+    description: "Claude 3.5 Sonnet via OpenRouter – ausgewogen, hohe Präzision",
+    contextWindow: "200k",
+    paid: true,
+    supportsHtmlOutput: true,
+    pricing: { inputPerM: 3.0, outputPerM: 15.0 },
+  },
+  {
+    id: "openrouter/google/gemini-2.0-flash-lite",
+    provider: "openrouter",
+    label: "Gemini 2.0 Flash Lite (OR)",
+    description: "Google – schnell, günstig, geeignet für einfache Dokumente",
+    contextWindow: "1M",
+    paid: true,
+    supportsHtmlOutput: false,
+    pricing: { inputPerM: 0.075, outputPerM: 0.3 },
+  },
+  {
     id: "openrouter/openai/gpt-4o",
     provider: "openrouter",
     label: "GPT-4o",
@@ -119,6 +159,54 @@ export const AI_MODELS: AIModel[] = [
 ];
 
 export const DEFAULT_MODEL_ID = "openrouter/free";
+
+/* ------------------------------------------------------------------ */
+/*  Simplified 4-Tier Model Configuration                              */
+/* ------------------------------------------------------------------ */
+
+export interface ModelTier {
+  tierId: "schnell" | "standard" | "smart" | "pro";
+  label: string;
+  description: string;
+  /** The underlying AI model ID (must exist in AI_MODELS) */
+  modelId: string;
+}
+
+export const MODEL_TIERS: ModelTier[] = [
+  {
+    tierId: "schnell",
+    label: "SCHNELL",
+    description:
+      "Ausreichend für die meisten einfachen Dokumente wie kurze Tabellen, Zusammenfassungen und Kurzinformationen.",
+    modelId: "anthropic/claude-3-5-haiku-20241022",
+  },
+  {
+    tierId: "standard",
+    label: "STANDARD",
+    description:
+      "Effiziente Erstellung von Inhalten mit größerem Kontext und höherer Präzision.",
+    modelId: "anthropic/claude-3-5-sonnet-20241022",
+  },
+  {
+    tierId: "smart",
+    label: "SMART",
+    description: "KI-gestützte Modellauswahl für individuelle Konfigurationen.",
+    modelId: "anthropic/claude-sonnet-4-5",
+  },
+  {
+    tierId: "pro",
+    label: "PRO",
+    description:
+      "Der größte Kontext und das stärkste Modell und maßgeschneiderte Prompts für die besten Ergebnisse.",
+    modelId: "anthropic/claude-opus-4-5",
+  },
+];
+
+export const DEFAULT_TIER_ID: ModelTier["tierId"] = "standard";
+
+export function getTier(tierId: string): ModelTier | undefined {
+  return MODEL_TIERS.find((t) => t.tierId === tierId);
+}
 
 export function getModel(id: string): AIModel | undefined {
   return AI_MODELS.find((m) => m.id === id);
