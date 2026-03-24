@@ -345,6 +345,7 @@ export default function DocGenPage() {
   const [showSourcesPanel, setShowSourcesPanel] = useState(false);
   
   const [selectedDesignStandard, setSelectedDesignStandard] = useState<"corporate" | "data-heavy" | "editorial" | "custom">("corporate");
+  const [showDesignPicker, setShowDesignPicker] = useState(false);
   const [customDesignPrompt, setCustomDesignPrompt] = useState("");
 
   const [resources, setResources] = useState<(Resource & { warning?: string })[]>([]);
@@ -354,6 +355,7 @@ export default function DocGenPage() {
 
   const modelPickerRef = useRef<HTMLDivElement>(null);
   const contextPickerRef = useRef<HTMLDivElement>(null);
+  const designPickerRef = useRef<HTMLDivElement>(null);
   const previewRef = useRef<HTMLDivElement>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
@@ -382,6 +384,9 @@ export default function DocGenPage() {
       }
       if (contextPickerRef.current && !contextPickerRef.current.contains(e.target as Node)) {
         setShowContextPicker(false);
+      }
+      if (designPickerRef.current && !designPickerRef.current.contains(e.target as Node)) {
+        setShowDesignPicker(false);
       }
     }
     document.addEventListener("mousedown", handleClickOutside);
@@ -622,31 +627,60 @@ export default function DocGenPage() {
             </div>
 
             {/* Design Standard Picker */}
-            <div className="relative text-sm">
-              <div className="flex items-center gap-2 px-3 py-1.5 border border-gray-200 rounded-lg bg-gray-50">
-                <span className="text-gray-500 whitespace-nowrap">Design:</span>
-                <select
-                  value={selectedDesignStandard}
-                  onChange={e => setSelectedDesignStandard(e.target.value as "corporate" | "data-heavy" | "editorial" | "custom")}
-                  className="font-medium text-gray-800 bg-transparent border-none outline-none cursor-pointer pr-1"
-                >
-                  <option value="corporate">Corporate (Fluent)</option>
-                  <option value="data-heavy">Data-Heavy (Carbon)</option>
-                  <option value="editorial">Editorial (Butterick)</option>
-                  <option value="custom">Eigenes Design</option>
-                </select>
-              </div>
-              {selectedDesignStandard === "custom" && (
-                <div className="absolute right-0 top-full mt-1 z-50 w-80 bg-white border border-gray-200 rounded-xl shadow-lg p-3">
-                  <p className="text-xs font-semibold text-gray-500 mb-1.5">Design-Instruktionen</p>
-                  <textarea
-                    value={customDesignPrompt}
-                    onChange={e => setCustomDesignPrompt(e.target.value)}
-                    rows={4}
-                    placeholder="Was genau soll ich aus der angehängten Datei übernehmen? (z.B. 'Extrahiere die Blautöne, die runde Tabellenform und die dicken Überschriften aus der angehängten PDF')"
-                    className="w-full text-xs border border-gray-200 rounded-lg px-2.5 py-2 focus:outline-none focus:border-blue-400 resize-none"
-                  />
-                  <p className="text-[10px] text-gray-400 mt-1">Lade eine Referenzdatei als Anhang hoch, damit der Agent das Design extrahieren kann.</p>
+            <div className="relative text-sm" ref={designPickerRef}>
+              <button
+                onClick={() => setShowDesignPicker(p => !p)}
+                className="flex items-center gap-2 px-3 py-1.5 border border-gray-200 rounded-lg bg-gray-50 hover:bg-gray-100 transition-colors"
+              >
+                <span className="text-gray-500">Design:</span>
+                <span className="font-medium text-gray-800">
+                  {selectedDesignStandard === "corporate" && "Corporate"}
+                  {selectedDesignStandard === "data-heavy" && "Data-Heavy"}
+                  {selectedDesignStandard === "editorial" && "Editorial"}
+                  {selectedDesignStandard === "custom" && "Eigenes"}
+                </span>
+                <svg className="w-4 h-4 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" /></svg>
+              </button>
+              {showDesignPicker && (
+                <div className="absolute right-0 top-full mt-1 z-50 w-72 bg-white border border-gray-200 rounded-xl shadow-lg overflow-hidden">
+                  <div className="px-3 py-2 border-b border-gray-100 bg-gray-50">
+                    <span className="text-xs font-semibold text-gray-400 uppercase tracking-wide">Design-Standard</span>
+                  </div>
+                  {(
+                    [
+                      { id: "corporate",  label: "Corporate (Fluent)",   desc: "Angebote, Verträge — 11.5px, 20/25mm Ränder" },
+                      { id: "data-heavy", label: "Data-Heavy (Carbon)",  desc: "Kostenpläne, Berichte — 10.5px, 14/18mm Ränder" },
+                      { id: "editorial",  label: "Editorial (Butterick)", desc: "Konzepte, Freitexte — 12px, 25/30mm Ränder" },
+                      { id: "custom",     label: "Eigenes Design",        desc: "CI aus Referenzdatei extrahieren" },
+                    ] as const
+                  ).map(opt => (
+                    <button
+                      key={opt.id}
+                      onClick={() => { setSelectedDesignStandard(opt.id); setShowDesignPicker(false); }}
+                      className={`w-full text-left px-4 py-2.5 hover:bg-gray-50 transition-colors border-b border-gray-50 last:border-0 ${selectedDesignStandard === opt.id ? "bg-blue-50" : ""}`}
+                    >
+                      <div className="flex items-center justify-between">
+                        <span className={`text-sm ${selectedDesignStandard === opt.id ? "font-semibold text-blue-700" : "text-gray-800"}`}>{opt.label}</span>
+                        {selectedDesignStandard === opt.id && (
+                          <svg className="w-3.5 h-3.5 text-blue-600 shrink-0" fill="currentColor" viewBox="0 0 20 20"><path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd"/></svg>
+                        )}
+                      </div>
+                      <p className="text-[10px] text-gray-400 mt-0.5">{opt.desc}</p>
+                    </button>
+                  ))}
+                  {selectedDesignStandard === "custom" && (
+                    <div className="px-4 py-3 border-t border-gray-100 bg-gray-50">
+                      <p className="text-[10px] font-semibold text-gray-500 mb-1.5 uppercase tracking-wide">Design-Instruktionen</p>
+                      <textarea
+                        value={customDesignPrompt}
+                        onChange={e => setCustomDesignPrompt(e.target.value)}
+                        rows={3}
+                        placeholder="z.B. 'Extrahiere die Blautöne und runden Tabellen aus der angehängten PDF'"
+                        className="w-full text-xs border border-gray-200 rounded-lg px-2.5 py-2 focus:outline-none focus:border-blue-400 resize-none bg-white"
+                      />
+                      <p className="text-[10px] text-gray-400 mt-1">Lade eine Referenzdatei als Anhang hoch.</p>
+                    </div>
+                  )}
                 </div>
               )}
             </div>
