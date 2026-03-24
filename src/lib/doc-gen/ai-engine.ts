@@ -25,11 +25,32 @@ export interface Resource {
 /*  System prompt builders                                              */
 /* ------------------------------------------------------------------ */
 
-export async function buildSystemPrompt(contextId?: string): Promise<Array<{ type: "text", text: string, providerOptions?: any }>> {
+const DESIGN_STANDARD_FILE_MAP: Record<string, string> = {
+  corporate:    "rules/design-standards/corporate-fluent.md",
+  "data-heavy": "rules/design-standards/data-heavy-carbon.md",
+  editorial:    "rules/design-standards/editorial-butterick.md",
+};
+
+export async function buildSystemPrompt(
+  contextId?: string,
+  designStandard?: string,
+  customDesignPrompt?: string
+): Promise<Array<{ type: "text", text: string, providerOptions?: any }>> {
   const globalRules = await loadContextContent("rules/global-rules.md");
   const permissions = await loadContextContent("rules/user-permissions.md");
   const context = await resolveContext(contextId ?? DEFAULT_CONTEXT_ID);
   const contextContent = context ? await loadContextContent(context.filePath) : "";
+
+  let designContent = "";
+  if (designStandard && DESIGN_STANDARD_FILE_MAP[designStandard]) {
+    designContent = await loadContextContent(DESIGN_STANDARD_FILE_MAP[designStandard]);
+  } else if (designStandard === "custom" && customDesignPrompt) {
+    designContent = `## CUSTOM DESIGN-ANWEISUNG\nDer Nutzer hat ein eigenes Design angefordert. Analysiere die angehängten Referenzdateien exakt auf die folgenden Parameter: ${customDesignPrompt}\nExtrahiere Hex-Farben, Margins, Font-Größen und Tabellen-Padding aus den Referenzdateien und baue deinen CSS <style>-Block exakt nach diesen extrahierten Werten auf. Gib am Anfang des Dokuments einen kompakten Block "DESIGN-ENTSCHEIDUNGEN (CUSTOM)" aus, der zeigt, welche Werte du extrahiert hast.`;
+  }
+
+  const designInstruction = designContent
+    ? `\n\n--- DESIGN-STANDARD (verbindlich für CSS-Generierung) ---\n${designContent}\n--- END DESIGN-STANDARD ---`
+    : "";
 
   return [
     {
@@ -58,7 +79,7 @@ Erstelle das gewünschte Dokument als vollständiges, professionell formatiertes
     },
     {
       type: "text",
-      text: `\n\n--- SYSTEM CONTEXT (nur interne Steuerung — kein Output) ---\n${globalRules}\n\n${permissions}\n--- END SYSTEM CONTEXT ---\n\n${contextContent}`,
+      text: `\n\n--- SYSTEM CONTEXT (nur interne Steuerung — kein Output) ---\n${globalRules}\n\n${permissions}\n--- END SYSTEM CONTEXT ---\n\n${contextContent}${designInstruction}`,
       providerOptions: { anthropic: { cacheControl: { type: "ephemeral" } } }
     }
   ];

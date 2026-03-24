@@ -24,6 +24,8 @@ export async function POST(request: NextRequest) {
     existingMarkdown,
     resources,
     sessionId,
+    designStandard,
+    customDesignPrompt,
   } = (await request.json()) as {
     messages: ModelMessage[];
     modelId?: string;
@@ -31,6 +33,8 @@ export async function POST(request: NextRequest) {
     existingMarkdown?: string;
     resources?: Resource[];
     sessionId?: string;
+    designStandard?: string;
+    customDesignPrompt?: string;
   };
 
   if (!messages || messages.length === 0) {
@@ -62,8 +66,8 @@ export async function POST(request: NextRequest) {
   const model = getLanguageModel(modelId);
   const tools = createDocGenTools(activeSessionId);
 
-  // Load full system prompt (global-rules + permissions + context-specific rules)
-  const systemPrompt = await buildSystemPrompt(contextId);
+  // Load full system prompt (global-rules + permissions + context-specific rules + design standard)
+  const systemPrompt = await buildSystemPrompt(contextId, designStandard, customDesignPrompt);
 
   // Initialize the stream using the Vercel AI SDK
   const result = streamText({

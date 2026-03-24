@@ -344,6 +344,9 @@ export default function DocGenPage() {
   const [showContextManager, setShowContextManager] = useState(false);
   const [showSourcesPanel, setShowSourcesPanel] = useState(false);
   
+  const [selectedDesignStandard, setSelectedDesignStandard] = useState<"corporate" | "data-heavy" | "editorial" | "custom">("corporate");
+  const [customDesignPrompt, setCustomDesignPrompt] = useState("");
+
   const [resources, setResources] = useState<(Resource & { warning?: string })[]>([]);
   const [resourceUrl, setResourceUrl] = useState("");
   const [loadingResource, setLoadingResource] = useState(false);
@@ -395,14 +398,18 @@ export default function DocGenPage() {
     modelId: selectedModelId,
     contextId: selectedContextId,
     resources: resources.length > 0 ? resources : (undefined as Resource[] | undefined),
+    designStandard: selectedDesignStandard as string,
+    customDesignPrompt: customDesignPrompt || undefined as string | undefined,
   });
   useEffect(() => {
     bodyRef.current = {
       modelId: selectedModelId,
       contextId: selectedContextId,
       resources: resources.length > 0 ? resources : undefined,
+      designStandard: selectedDesignStandard,
+      customDesignPrompt: selectedDesignStandard === "custom" && customDesignPrompt ? customDesignPrompt : undefined,
     };
-  }, [selectedModelId, selectedContextId, resources]);
+  }, [selectedModelId, selectedContextId, resources, selectedDesignStandard, customDesignPrompt]);
 
   // Create the transport once so the chat state survives re-renders
   const transportRef = useRef(
@@ -610,6 +617,36 @@ export default function DocGenPage() {
                        {c.label} {c.custom && <span className="ml-2 text-[10px] bg-purple-100 text-purple-700 px-1.5 py-0.5 rounded">Custom</span>}
                      </button>
                    ))}
+                </div>
+              )}
+            </div>
+
+            {/* Design Standard Picker */}
+            <div className="relative text-sm">
+              <div className="flex items-center gap-2 px-3 py-1.5 border border-gray-200 rounded-lg bg-gray-50">
+                <span className="text-gray-500 whitespace-nowrap">Design:</span>
+                <select
+                  value={selectedDesignStandard}
+                  onChange={e => setSelectedDesignStandard(e.target.value as "corporate" | "data-heavy" | "editorial" | "custom")}
+                  className="font-medium text-gray-800 bg-transparent border-none outline-none cursor-pointer pr-1"
+                >
+                  <option value="corporate">Corporate (Fluent)</option>
+                  <option value="data-heavy">Data-Heavy (Carbon)</option>
+                  <option value="editorial">Editorial (Butterick)</option>
+                  <option value="custom">Eigenes Design</option>
+                </select>
+              </div>
+              {selectedDesignStandard === "custom" && (
+                <div className="absolute right-0 top-full mt-1 z-50 w-80 bg-white border border-gray-200 rounded-xl shadow-lg p-3">
+                  <p className="text-xs font-semibold text-gray-500 mb-1.5">Design-Instruktionen</p>
+                  <textarea
+                    value={customDesignPrompt}
+                    onChange={e => setCustomDesignPrompt(e.target.value)}
+                    rows={4}
+                    placeholder="Was genau soll ich aus der angehängten Datei übernehmen? (z.B. 'Extrahiere die Blautöne, die runde Tabellenform und die dicken Überschriften aus der angehängten PDF')"
+                    className="w-full text-xs border border-gray-200 rounded-lg px-2.5 py-2 focus:outline-none focus:border-blue-400 resize-none"
+                  />
+                  <p className="text-[10px] text-gray-400 mt-1">Lade eine Referenzdatei als Anhang hoch, damit der Agent das Design extrahieren kann.</p>
                 </div>
               )}
             </div>
