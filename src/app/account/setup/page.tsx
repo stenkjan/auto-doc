@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
+import { useSession } from "next-auth/react";
 import { loadStripe } from "@stripe/stripe-js";
 import {
   Elements,
@@ -112,6 +113,17 @@ function SetupForm({
 }
 
 export default function AccountSetupPage() {
+  const { data: session, status } = useSession();
+  const router = useRouter();
+
+  // Admins bypass billing setup entirely
+  useEffect(() => {
+    if (status === "loading") return;
+    if (!session) { router.replace("/auth"); return; }
+    if (session.user?.role === "admin" || session.user?.billingComplete) {
+      router.replace("/doc-gen");
+    }
+  }, [session, status, router]);
   const [clientSecret, setClientSecret] = useState<string | null>(null);
   const [step, setStep] = useState<"address" | "payment">("address");
   const [billingAddress, setBillingAddress] = useState<BillingAddress>({
