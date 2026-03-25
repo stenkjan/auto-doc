@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
+import { useSession } from "next-auth/react";
 import toast from "react-hot-toast";
 import type { Resource } from "@/lib/doc-gen/ai-engine";
 

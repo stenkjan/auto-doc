@@ -1,9 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import crypto from "crypto";
-import { requireAdminAuth } from "@/lib/admin-auth";
+import { requireAdminAuth, isAdminUser, getAuthSession } from "@/lib/admin-auth";
 import { prisma } from "@/lib/prisma";
 import { generateMarkdownDocument } from "@/lib/doc-gen/ai-engine";
 import { AI_MODELS, DEFAULT_MODEL_ID } from "@/lib/doc-gen/models";
+
+const FREE_MODEL_ID = "openrouter/free";
 
 export async function GET(request: NextRequest) {
   const authError = await requireAdminAuth(request);
@@ -49,6 +51,15 @@ export async function POST(request: NextRequest) {
     modelId?: string;
     existingMarkdown?: string;
   };
+
+  // Non-free models restricted to admins
+  const session = await getAuthSession();
+  if (modelId !== FREE_MODEL_ID && !isAdminUser(session)) {
+    return NextResponse.json(
+      { error: "Dieses Modell erfordert einen Admin-Zugang" },
+      { status: 403 }
+    );
+  }
 
   if (!prompt) {
     return NextResponse.json({ error: "Prompt is required" }, { status: 400 });
