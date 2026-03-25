@@ -1,8 +1,9 @@
 import { createAnthropic } from "@ai-sdk/anthropic";
 import { createOpenAI } from "@ai-sdk/openai";
+import { createGoogleGenerativeAI } from "@ai-sdk/google";
 import type { LanguageModel } from "ai";
 
-export type AIProvider = "openrouter" | "anthropic";
+export type AIProvider = "openrouter" | "anthropic" | "google";
 
 export interface ModelPricing {
   /** Cost per 1M input tokens in USD */
@@ -31,6 +32,14 @@ export const AI_MODELS: AIModel[] = [
     provider: "openrouter",
     label: "Free Router",
     description: "Automatisch – wählt das beste kostenlose Modell",
+    contextWindow: "200k",
+    paid: false,
+  },
+  {
+    id: "openrouter/auto",
+    provider: "openrouter",
+    label: "Auto Router",
+    description: "OpenRouter – wählt automatisch das beste verfügbare Modell (Gemini, Claude, etc.)",
     contextWindow: "200k",
     paid: false,
   },
@@ -74,10 +83,51 @@ export const AI_MODELS: AIModel[] = [
     contextWindow: "128k",
     paid: false,
   },
+  // ── Google Gemini (direct via AUTO_DOC_GEMINI_KEY) ─────────────────
+  {
+    id: "google/gemini-2.0-flash-lite",
+    provider: "google",
+    label: "Gemini 2.0 Flash Lite",
+    description: "Google – ultra-schnell und günstig, ideal für einfache Dokumente",
+    contextWindow: "1M",
+    paid: true,
+    supportsHtmlOutput: false,
+    pricing: { inputPerM: 0.075, outputPerM: 0.3 },
+  },
+  {
+    id: "google/gemini-2.0-flash",
+    provider: "google",
+    label: "Gemini 2.0 Flash",
+    description: "Google – schnell, solide Qualität für die meisten Dokumente",
+    contextWindow: "1M",
+    paid: true,
+    supportsHtmlOutput: true,
+    pricing: { inputPerM: 0.1, outputPerM: 0.4 },
+  },
+  {
+    id: "google/gemini-1.5-pro",
+    provider: "google",
+    label: "Gemini 1.5 Pro",
+    description: "Google – höchste Gemini-Qualität, 2M Kontext",
+    contextWindow: "2M",
+    paid: true,
+    supportsHtmlOutput: true,
+    pricing: { inputPerM: 1.25, outputPerM: 5.0 },
+  },
+  // ── Virtual SMART model — resolved at runtime to Gemini 1.5 Pro or Claude Sonnet 4.5 ──
+  {
+    id: "smart",
+    provider: "google",  // default; overridden at runtime when SMART_USE_CLAUDE=true
+    label: "Smart (auto)",
+    description: "Dynamisch: Gemini 1.5 Pro (Standard) oder Claude Sonnet 4.5 (wenn aktiviert)",
+    contextWindow: "2M",
+    paid: true,
+    supportsHtmlOutput: true,
+    pricing: { inputPerM: 1.25, outputPerM: 5.0 },
+  },
   // ── Paid models (Anthropic direct) ─────────────────────────────────
   {
-    id: "anthropic/claude-3-5-haiku-20241022",
-    provider: "anthropic",
+    id: "anthropic/claude-3-5-haiku-20241022",    provider: "anthropic",
     label: "Claude 3.5 Haiku",
     description: "Schnell & günstig – ideal für einfache Dokumente",
     contextWindow: "200k",
@@ -175,30 +225,32 @@ export interface ModelTier {
 export const MODEL_TIERS: ModelTier[] = [
   {
     tierId: "schnell",
-    label: "SCHNELL",
+    label: "SCHNELL (KOSTENLOS)",
     description:
       "Ausreichend für die meisten einfachen Dokumente wie kurze Tabellen, Zusammenfassungen und Kurzinformationen.",
-    modelId: "anthropic/claude-3-5-haiku-20241022",
+    modelId: "openrouter/free",
   },
   {
     tierId: "standard",
     label: "STANDARD",
     description:
       "Effiziente Erstellung von Inhalten mit größerem Kontext und höherer Präzision.",
-    modelId: "anthropic/claude-3-5-sonnet-20241022",
+    modelId: "google/gemini-2.0-flash",
   },
   {
     tierId: "smart",
     label: "SMART",
     description: "KI-gestützte Modellauswahl für individuelle Konfigurationen.",
-    modelId: "anthropic/claude-sonnet-4-5",
+    // Runtime-resolved: Gemini 1.5 Pro now; set SMART_USE_CLAUDE=true → Claude Sonnet 4.5
+    modelId: "smart",
   },
   {
     tierId: "pro",
     label: "PRO",
     description:
       "Der größte Kontext und das stärkste Modell und maßgeschneiderte Prompts für die besten Ergebnisse.",
-    modelId: "anthropic/claude-opus-4-5",
+    // Requires Anthropic credits — best Claude model for professional document generation
+    modelId: "anthropic/claude-sonnet-4-5",
   },
 ];
 
@@ -259,12 +311,29 @@ const openRouterProvider = createOpenAI({
   },
 });
 
+const googleProvider = createGoogleGenerativeAI({
+  apiKey: process.env.AUTO_DOC_GEMINI_KEY ?? "",
+});
+
 /**
  * Get a Vercel AI SDK LanguageModel instance for a given model ID.
  */
 export function getLanguageModel(modelId: string): LanguageModel {
   const model = getModel(modelId);
   if (!model) throw new Error(`Unbekanntes Modell: ${modelId}`);
+
+  // SMART virtual model: Gemini 1.5 Pro by default.
+  // Set SMART_USE_CLAUDE=true in .env once Anthropic credits are active → auto-switches to Claude Sonnet 4.5.
+  if (model.id === "smart") {
+    if (process.env.SMART_USE_CLAUDE === "true" && process.env.ANTHROPIC_API_KEY?.trim()) {
+      return anthropicProvider("claude-sonnet-4-5");
+    }
+    return googleProvider("gemini-1.5-pro");
+  }
+
+  if (model.provider === "google") {
+    return googleProvider(model.id.replace(/^google\//, ""));
+  }
 
   if (model.provider === "anthropic") {
     const actualId = model.id.replace(/^anthropic\//, "");
