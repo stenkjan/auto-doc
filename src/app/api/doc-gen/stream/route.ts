@@ -115,8 +115,8 @@ export async function POST(request: NextRequest) {
     onFinish: async ({ usage }) => {
       if (!isAdmin && userId && usage) {
         await updateDocRunUsage(activeSessionId, {
-          promptTokens: usage.promptTokens ?? 0,
-          completionTokens: usage.completionTokens ?? 0,
+          promptTokens: usage.inputTokens ?? 0,
+          completionTokens: usage.outputTokens ?? 0,
         });
       }
     },

@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useCallback, useEffect, useRef } from "react";
+import { useSession } from "next-auth/react";
 import dynamic from "next/dynamic";
 import remarkGfm from "remark-gfm";
 import toast from "react-hot-toast";
@@ -366,6 +367,9 @@ function ContextManagerModal({
 /* ------------------------------------------------------------------ */
 
 export default function DocGenPage() {
+  const { data: session } = useSession();
+  const isAdmin = session?.user?.role === "admin";
+
   const [selectedTierId, setSelectedTierId] = useState<string>(DEFAULT_TIER_ID);
   const [showModelPicker, setShowModelPicker] = useState(false);
   const [allContexts, setAllContexts] = useState<ContextEntry[]>(BUILTIN_CONTEXTS);
@@ -410,6 +414,16 @@ export default function DocGenPage() {
       return next;
     });
   }, []);
+
+  /* ── Billing state (non-admin users) ───────────────────────────── */
+  const [spendingLimitEur, setSpendingLimitEur] = useState(1.0);
+  const [runCostEur, setRunCostEur] = useState(0);
+  const [checkingOut, setCheckingOut] = useState(false);
+  const [runSessionId] = useState<string>(() =>
+    typeof crypto !== "undefined"
+      ? crypto.randomUUID().replace(/-/g, "").slice(0, 16)
+      : Math.random().toString(36).slice(2)
+  );
 
   /* ────────────────────────────────────────────────────────────────── */
 
@@ -492,6 +506,8 @@ export default function DocGenPage() {
     resources: resources.length > 0 ? resources : (undefined as Resource[] | undefined),
     designStandard: selectedDesignStandard as string,
     customDesignPrompt: customDesignPrompt || undefined as string | undefined,
+    sessionId: runSessionId,
+    spendingLimitEur: isAdmin ? undefined as number | undefined : spendingLimitEur,
   });
   useEffect(() => {
     const tier = MODEL_TIERS.find(t => t.tierId === selectedTierId) ?? MODEL_TIERS[1];
@@ -501,8 +517,10 @@ export default function DocGenPage() {
       resources: resources.length > 0 ? resources : undefined,
       designStandard: selectedDesignStandard,
       customDesignPrompt: selectedDesignStandard === "custom" && customDesignPrompt ? customDesignPrompt : undefined,
+      sessionId: runSessionId,
+      spendingLimitEur: isAdmin ? undefined : spendingLimitEur,
     };
-  }, [selectedTierId, selectedContextId, resources, selectedDesignStandard, customDesignPrompt]);
+  }, [selectedTierId, selectedContextId, resources, selectedDesignStandard, customDesignPrompt, runSessionId, isAdmin, spendingLimitEur]);
 
   const transportRef = useRef(
     new TextStreamChatTransport({
@@ -525,6 +543,23 @@ export default function DocGenPage() {
       messagesEndRef.current.scrollIntoView({ behavior: "smooth" });
     }
   }, [messages]);
+
+  /* ── Poll run cost for non-admin users ──────────────────────────── */
+  useEffect(() => {
+    if (isAdmin) return;
+    const interval = setInterval(async () => {
+      try {
+        const res = await fetch(`/api/billing/run?sessionId=${runSessionId}`);
+        if (res.ok) {
+          const data = await res.json();
+          setRunCostEur(data.estimatedCostEur ?? 0);
+        }
+      } catch {
+        // silently ignore
+      }
+    }, 3000);
+    return () => clearInterval(interval);
+  }, [isAdmin, runSessionId]);
 
   const getMessageText = (m: { parts: Array<{ type: string; text?: string }> }) =>
     m.parts.filter(p => p.type === "text").map(p => p.text ?? "").join("");
@@ -641,8 +676,42 @@ export default function DocGenPage() {
     }
   }, [fetchRenderedHTML]);
 
-  const printDocument = useCallback(async () => {
-    const html = await fetchRenderedHTML();
+  /* ── Checkout & download (non-admin users) ─────────────────────── */
+  const checkoutAndDownload = useCallback(async () => {
+    if (runCostEur <= 0) {
+      await downloadPDF();
+      return;
+    }
+    setCheckingOut(true);
+    try {
+      const res = await fetch("/api/billing/checkout", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ sessionId: runSessionId }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        if (res.status === 402) {
+          toast.error("Keine Zahlungsmethode hinterlegt. Bitte Billing einrichten.");
+          window.location.href = "/account/setup";
+          return;
+        }
+        throw new Error(data.error ?? "Checkout fehlgeschlagen");
+      }
+      if (data.requiresAction) {
+        toast.error("3D-Sicherheitsprüfung erforderlich – bitte im Browser bestätigen.");
+        return;
+      }
+      toast.success(`Zahlung erfolgreich (€${(data.chargedEur ?? 0).toFixed(4)}). PDF wird generiert...`);
+      await downloadPDF();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Checkout fehlgeschlagen");
+    } finally {
+      setCheckingOut(false);
+    }
+  }, [runCostEur, runSessionId, downloadPDF]);
+
+  const printDocument = useCallback(async () => {    const html = await fetchRenderedHTML();
     if (!html) return;
 
     const printWindow = window.open("", "_blank");
@@ -1136,6 +1205,39 @@ export default function DocGenPage() {
 
           {/* Chat Input */}
           <div className="p-3 bg-white dark:bg-gray-800 border-t border-gray-200 dark:border-gray-700">
+            {/* Spend limit control — non-admin users */}
+            {!isAdmin && (
+              <div className="flex items-center justify-between mb-2 px-1">
+                <div className="flex items-center gap-2">
+                  <label className="text-xs text-gray-500 dark:text-gray-400 shrink-0">
+                    Limit pro Lauf:
+                  </label>
+                  <div className="flex items-center gap-1">
+                    <span className="text-xs text-gray-500">€</span>
+                    <input
+                      type="number"
+                      min={0.10}
+                      max={50}
+                      step={0.10}
+                      value={spendingLimitEur}
+                      onChange={(e) => setSpendingLimitEur(Math.max(0.10, Number(e.target.value)))}
+                      className="w-16 text-xs px-2 py-1 border border-gray-200 dark:border-gray-600 rounded bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-200 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                    />
+                  </div>
+                </div>
+                {runCostEur > 0 && (
+                  <div className={`flex items-center gap-1 text-xs px-2 py-1 rounded-full font-medium ${
+                    runCostEur >= spendingLimitEur * 0.9
+                      ? "bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400"
+                      : "bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-400"
+                  }`}>
+                    <span>Aktuell: €{runCostEur.toFixed(4)}</span>
+                    <span className="text-gray-400">/</span>
+                    <span>€{spendingLimitEur.toFixed(2)}</span>
+                  </div>
+                )}
+              </div>
+            )}
             <form onSubmit={(e) => {
               e.preventDefault();
               if (input.trim() && !isLoading) {
@@ -1183,9 +1285,28 @@ export default function DocGenPage() {
               <button onClick={printDocument} className="text-xs px-3 py-1.5 border border-gray-300 dark:border-gray-600 rounded hover:bg-gray-100 dark:hover:bg-gray-700 font-medium text-gray-700 dark:text-gray-200">
                 Drucken (Browser)
               </button>
-              <button onClick={downloadPDF} className="text-xs px-3 py-1.5 bg-gray-900 dark:bg-gray-600 text-white rounded hover:bg-gray-800 dark:hover:bg-gray-500 font-medium flex items-center gap-1.5">
-                PDF Export
-              </button>
+              {isAdmin ? (
+                <button onClick={downloadPDF} className="text-xs px-3 py-1.5 bg-gray-900 dark:bg-gray-600 text-white rounded hover:bg-gray-800 dark:hover:bg-gray-500 font-medium flex items-center gap-1.5">
+                  PDF Export
+                </button>
+              ) : (
+                <button
+                  onClick={checkoutAndDownload}
+                  disabled={checkingOut || !latestMarkdown}
+                  className="text-xs px-3 py-1.5 bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-50 font-medium flex items-center gap-1.5"
+                >
+                  {checkingOut ? (
+                    <span className="flex items-center gap-1.5">
+                      <span className="w-3 h-3 border border-white border-t-transparent rounded-full animate-spin" />
+                      Zahlung...
+                    </span>
+                  ) : runCostEur > 0 ? (
+                    `Checkout & PDF (€${runCostEur.toFixed(4)})`
+                  ) : (
+                    "PDF herunterladen"
+                  )}
+                </button>
+              )}
             </div>
           </div>
           

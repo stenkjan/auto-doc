@@ -2,9 +2,10 @@ import { prisma } from "@/lib/prisma";
 import { estimateCostEur } from "@/lib/doc-gen/models";
 
 export interface TokenUsage {
-  promptTokens: number;
-  completionTokens: number;
+  promptTokens: number;   // maps to inputTokens in Vercel AI SDK v6
+  completionTokens: number; // maps to outputTokens in Vercel AI SDK v6
 }
+
 
 /**
  * Create a new DocRun for a billing session. Idempotent — returns existing if already created.
