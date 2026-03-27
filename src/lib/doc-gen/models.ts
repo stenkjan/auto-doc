@@ -41,7 +41,7 @@ export const AI_MODELS: AIModel[] = [
     label: "Auto Router",
     description: "OpenRouter – wählt automatisch das beste verfügbare Modell (Gemini, Claude, etc.)",
     contextWindow: "200k",
-    paid: false,
+    paid: true, // costs whatever model actually runs — not free
   },
   {
     id: "openrouter/optimus-alpha",
@@ -291,6 +291,68 @@ export function estimateCostEur(
       ? "< € 0,001"
       : `€ ${eur.toFixed(4).replace(".", ",")}`;
   return { usd, eur, formatted };
+}
+
+/* ------------------------------------------------------------------ */
+/*  Provider Color Map (for spending bar UI)                           */
+/* ------------------------------------------------------------------ */
+
+export const PROVIDER_COLORS: Record<AIProvider, string> = {
+  anthropic: "#8B5CF6",  // purple
+  google: "#3B82F6",     // blue
+  openrouter: "#22C55E", // green
+};
+
+/* ------------------------------------------------------------------ */
+/*  Pre-Flight Cost Estimation                                          */
+/* ------------------------------------------------------------------ */
+
+/** Approximate token count from character count (~4 chars/token for European text) */
+export function estimateTokenCount(text: string): number {
+  return Math.ceil(text.length / 4);
+}
+
+/**
+ * Estimate total cost in EUR for a planned run before sending.
+ * Returns null if model is free (no pricing).
+ *
+ * @param modelId - The AI model ID
+ * @param promptChars - Total character count of prompt + resources
+ * @param systemOverheadTokens - Estimated system prompt tokens (default: 3000)
+ * @param expectedOutputTokens - Estimated output tokens (default: 6000 for doc generation)
+ */
+export function estimateRunCostEur(
+  modelId: string,
+  promptChars: number,
+  systemOverheadTokens = 3000,
+  expectedOutputTokens = 6000
+): {
+  estimatedInputTokens: number;
+  estimatedOutputTokens: number;
+  eur: number;
+  formatted: string;
+} | null {
+  const model = getModel(modelId);
+  if (!model?.pricing) return null;
+
+  const inputFromPrompt = Math.ceil(promptChars / 4);
+  const totalInputTokens = inputFromPrompt + systemOverheadTokens;
+
+  const usd =
+    (totalInputTokens / 1_000_000) * model.pricing.inputPerM +
+    (expectedOutputTokens / 1_000_000) * model.pricing.outputPerM;
+  const eur = usd * USD_TO_EUR;
+  const formatted =
+    eur < 0.001
+      ? "< € 0,001"
+      : `€ ${eur.toFixed(4).replace(".", ",")}`;
+
+  return {
+    estimatedInputTokens: totalInputTokens,
+    estimatedOutputTokens: expectedOutputTokens,
+    eur,
+    formatted,
+  };
 }
 
 /* ------------------------------------------------------------------ */

@@ -2011,3 +2011,158 @@ Tel: +43 664 3949605 · mail@hoam-house.com · hoam-house.com
 **Status:** Production-Ready
 **Next Review:** June 2026
 
+---
+
+## 23. Changelog — March 2026 UI & Model Tier Refactoring
+
+### 23.1 Overview
+
+A series of changes were made to the doc-gen UI (`src/app/doc-gen/page.tsx`), the model registry (`src/lib/doc-gen/models.ts`), and environment configuration (`.env`) to introduce:
+
+1. **Info popovers on all dropdown items** (hover + click, with fullscreen document preview)
+2. **Simplified 4-tier model selection** (replacing the raw model list)
+3. **Multi-provider AI backend** (OpenRouter + Anthropic + Google Gemini)
+
+---
+
+### 23.2 New UI Components
+
+**`src/app/doc-gen/_components/InfoPopover.tsx`**
+
+Reusable ⓘ trigger button. Manages hover/pin/X-close state — not used for rendering the popover box itself (that is done inline in the panel for correct overflow/positioning), but kept as a utility reference.
+
+**`src/app/doc-gen/_components/FullscreenDocViewer.tsx`**
+
+Full-viewport modal that renders an iframe over the doc-gen page with:
+- `backdrop-filter: blur(4px)` + dark overlay
+- `iframe src` pointing to a template URL (e.g. `/api/doc-gen/baukoordination`)
+- Escape key + X button close
+- `z-index: 9999`
+
+---
+
+### 23.3 Design Dropdown — Info Buttons & Previews
+
+Each design option now has an ⓘ button on the right of the row. Hovering or clicking shows a **176×300 portrait box** positioned to the left of the dropdown panel. The box contains a scaled-down iframe preview of the corresponding document template.
+
+**Design → Template URL mapping:**
+
+| Design Standard | Preview URL | Document type |
+|---|---|---|
+| Corporate (Fluent) | `/api/doc-gen/baukoordination` | Service proposal |
+| Data-Heavy (Carbon) | `/api/doc-gen/cost-plan` | Cost plan |
+| Editorial (Butterick) | `/api/doc-gen/report` | Report |
+| Eigenes Design | *(text placeholder)* | N/A |
+
+Clicking the preview box (not the X) opens `FullscreenDocViewer` with the same URL.
+
+**Popover state pattern** (managed inline in `page.tsx`):
+```typescript
+const [hoveredDesignInfoId, setHoveredDesignInfoId] = useState<string | null>(null);
+const [pinnedDesignInfoId, setPinnedDesignInfoId] = useState<string | null>(null);
+const activeDesignInfoId = pinnedDesignInfoId ?? hoveredDesignInfoId;
+// + designHideTimer ref with 200ms delay for mouse-bridge behavior
+```
+
+**Panel structure** (avoids `overflow-hidden` clipping the popover):
+```
+Outer panel div (position: absolute, no overflow-hidden)
+├── Info box (position: absolute, right: 100%, if active)
+└── Inner visual div (overflow-hidden, rounded-xl, shadow)
+    └── Items with ⓘ trigger buttons
+```
+
+---
+
+### 23.4 Model Dropdown — 4-Tier System
+
+The raw `AI_MODELS.map()` list was replaced with **4 fixed tier items**. Same ⓘ popover pattern (176px wide, auto-height, white text on `bg-gray-700`).
+
+**`src/app/doc-gen/page.tsx` state change:**
+- Removed: `selectedModelId`, `AI_MODELS` import, `DEFAULT_MODEL_ID`
+- Added: `selectedTierId` (default `"standard"`), `MODEL_TIERS` import
+- `bodyRef.current.modelId` now resolved from `MODEL_TIERS.find(t => t.tierId === selectedTierId).modelId`
+
+---
+
+### 23.5 Model Registry — `src/lib/doc-gen/models.ts`
+
+#### New `AIProvider` type
+```typescript
+export type AIProvider = "openrouter" | "anthropic" | "google";
+```
+
+#### New providers added
+```typescript
+// Google Gemini — uses AUTO_DOC_GEMINI_KEY
+const googleProvider = createGoogleGenerativeAI({
+  apiKey: process.env.AUTO_DOC_GEMINI_KEY ?? "",
+});
+```
+
+#### `ModelTier` interface + `MODEL_TIERS` constant
+```typescript
+export interface ModelTier {
+  tierId: "schnell" | "standard" | "smart" | "pro";
+  label: string;
+  description: string;
+  modelId: string; // must exist in AI_MODELS
+}
+```
+
+#### Current tier → model mapping
+
+| Tier | Label | Model (now) | Model (when credits active) |
+|---|---|---|---|
+| `schnell` | SCHNELL (KOSTENLOS) | `openrouter/free` | — |
+| `standard` | STANDARD | `google/gemini-2.0-flash` | — |
+| `smart` | SMART | `google/gemini-1.5-pro` | `anthropic/claude-sonnet-4-5` ¹ |
+| `pro` | PRO | `anthropic/claude-sonnet-4-5` | — |
+
+¹ SMART switches to Claude Sonnet 4.5 automatically when `SMART_USE_CLAUDE=true` is set in `.env`.
+
+#### `getLanguageModel()` — virtual `"smart"` model
+```typescript
+if (model.id === "smart") {
+  if (process.env.SMART_USE_CLAUDE === "true" && process.env.ANTHROPIC_API_KEY?.trim()) {
+    return anthropicProvider("claude-sonnet-4-5");
+  }
+  return googleProvider("gemini-1.5-pro");
+}
+```
+
+#### `getTier()` helper
+```typescript
+export function getTier(tierId: string): ModelTier | undefined
+```
+
+---
+
+### 23.6 Environment Variables Added
+
+| Variable | Purpose | Required for |
+|---|---|---|
+| `AUTO_DOC_GEMINI_KEY` | Google AI Studio key | STANDARD + SMART tiers |
+| `SMART_USE_CLAUDE` | `"true"` → SMART uses Claude Sonnet 4.5 | SMART tier Claude upgrade |
+| `ANTHROPIC_API_KEY` | Anthropic direct API | SMART (when enabled) + PRO |
+
+**To activate Claude Sonnet 4.5 for the SMART tier** (after adding Anthropic credits):
+```env
+SMART_USE_CLAUDE=true
+```
+
+---
+
+### 23.7 New Model Entries in `AI_MODELS`
+
+| ID | Provider | Label | Cost (input/output per 1M) |
+|---|---|---|---|
+| `google/gemini-2.0-flash-lite` | google | Gemini 2.0 Flash Lite | $0.075 / $0.30 |
+| `google/gemini-2.0-flash` | google | Gemini 2.0 Flash | $0.10 / $0.40 |
+| `google/gemini-1.5-pro` | google | Gemini 1.5 Pro | $1.25 / $5.00 |
+| `smart` | google *(virtual)* | Smart (auto) | runtime-resolved |
+| `anthropic/claude-3-5-haiku-20241022` | anthropic | Claude 3.5 Haiku | $0.80 / $4.00 |
+| `anthropic/claude-3-5-sonnet-20241022` | anthropic | Claude 3.5 Sonnet | $3.00 / $15.00 |
+| `openrouter/auto` | openrouter | Auto Router | varies |
+
+

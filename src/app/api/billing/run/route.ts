@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/auth";
 import { createDocRun, getDocRun } from "@/lib/billing/run-tracker";
 import { isAdminUser } from "@/lib/admin-auth";
+import { getModel } from "@/lib/doc-gen/models";
 
 /**
  * POST /api/billing/run   — create a DocRun for a session
@@ -56,6 +57,8 @@ export async function GET(request: NextRequest) {
 
   return NextResponse.json({
     sessionId: run.sessionId,
+    modelId: run.modelId,
+    provider: getModel(run.modelId)?.provider ?? "openrouter",
     estimatedCostEur: run.estimatedCostEur,
     spendingLimitEur: run.spendingLimitEur,
     status: run.status,
