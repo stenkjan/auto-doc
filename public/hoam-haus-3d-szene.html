@@ -340,6 +340,7 @@ const M = {
   wood:     [0.62, 0.18, 0],
   metal:    [0.30, 0.55, 3],
   bark:     [0.85, 0.06, 0],
+  water:    [0.03, 1.00, 2],
 };
 /* Farbfassung nach den Referenzfotos: Lärche sägerau, Trapezblech RAL 9005,
    Fichte-3-Schichtplatte innen, Wiese, blauer Himmel. */
@@ -360,6 +361,7 @@ const C = {
   wood:     [0.700, 0.520, 0.300],
   metal:    [0.330, 0.335, 0.345],
   bark:     [0.400, 0.360, 0.310],
+  water:    [0.045, 0.115, 0.135],
 };
 
 /* =========================================================== Geometrie ==== */
@@ -486,6 +488,8 @@ const BUMPS = [
   { x: -34, z:  16, r: 15, h:  1.5 }, { x:  20, z: -20, r: 13, h: -1.1 },
   { x: -14, z:  26, r: 18, h:  1.9 },
   { x:   2, z: -27, r: 19, h:  2.6 }, { x:  30, z:  -8, r: 12, h:  1.3 },
+  { x:   0, z:  16, r: 16, h: -11.5 }, { x: -24, z:  26, r: 20, h: -9.0 },
+  { x:  26, z:  24, r: 18, h: -8.0 },
 ];
 function vnoise(x, z) {                       // billiges, weiches Wertrauschen
   const xi = Math.floor(x), zi = Math.floor(z);
@@ -501,7 +505,7 @@ function vnoise(x, z) {                       // billiges, weiches Wertrauschen
 function padMask(x, z) {                      // 1 = Bauplatte (eben)
   const px = HX * PS, pz = HZ * PS, pt = TERR_Z1 * PS;
   const inX = smoothstep(px + 9.5, px + 1.2, Math.abs(x));
-  const inZ = smoothstep(pt + 8.5, pt + 1.0, z) * smoothstep(-pz - 11.5, -pz - 2.0, z);
+  const inZ = smoothstep(pt + 4.2, pt + 0.4, z) * smoothstep(-pz - 11.5, -pz - 2.0, z);
   const drive = smoothstep(15, 5, Math.abs(z + 9)) * smoothstep(px + 26, px + 4, x);
   return clamp(Math.max(inX * inZ, drive * 0.9), 0, 1);
 }
@@ -894,6 +898,32 @@ function buildHardscape(mesh, rng) {
   /* Trennscheibe zwischen den beiden Terrassen, auf voller Tiefe */
   mesh.box(-0.11, 0.0, TERR_Z0 - 0.3, 0.11, 2.25, TERR_Z1, C.plaster, M.plaster);
   mesh.box(-6.5, -0.62, TERR_Z1, 6.5, -0.30, TERR_Z1 + 0.42, C.terrace, M.concrete);
+
+  /* --- Infinity-Pool: kragt über die Hangkante nach Süden aus --- */
+  const pz0 = TERR_Z1 - 0.2, pz1 = TERR_Z1 + 5.6, pxw = 4.6;
+  const rim = -0.06, wat = -0.15, bot = -1.30;
+  /* Beckenwände, die Südwand als Überlaufkante bündig mit dem Wasser */
+  mesh.box(-pxw - 0.34, bot, pz0, -pxw, rim, pz1, C.terrace, M.concrete);
+  mesh.box( pxw, bot, pz0,  pxw + 0.34, rim, pz1, C.terrace, M.concrete);
+  mesh.box(-pxw - 0.34, bot, pz0, pxw + 0.34, rim, pz0 + 0.34, C.terrace, M.concrete);
+  mesh.box(-pxw - 0.34, bot, pz1 - 0.26, pxw + 0.34, wat, pz1, C.terrace, M.concrete);
+  mesh.box(-pxw - 0.34, bot - 0.22, pz0, pxw + 0.34, bot, pz1, C.terrace, M.concrete);
+  /* Wasserfläche */
+  mesh.box(-pxw, wat - 0.02, pz0 + 0.34, pxw, wat, pz1 - 0.26, C.water, M.water);
+  /* Auskragender Rand über dem Hang */
+  mesh.box(-pxw - 0.60, bot - 0.22, pz1, pxw + 0.60, rim, pz1 + 0.40, C.terrace, M.concrete);
+
+  /* --- Sauna am westlichen Terrassenende --- */
+  const sx = -HX + 1.9, sz = TERR_Z0 + 2.3, sw = 1.55, sd = 1.35, sh = 2.35;
+  mesh.box(sx - sw, 0.0, sz - sd, sx + sw, sh, sz + sd, C.plasterIn, M.plasterIn);
+  for (const [ax, fc, dr] of [['x', sz - sd, -1], ['x', sz + sd, 1]])
+    battens(mesh, ax, fc, sx - sw, sx + sw, 0.02, sh, rng, [], { dir: dr });
+  for (const [ax, fc, dr] of [['z', sx - sw, -1], ['z', sx + sw, 1]])
+    battens(mesh, ax, fc, sz - sd, sz + sd, 0.02, sh, rng,
+            [hole(sz - 0.42, sz + 0.42, 0.95, 1.75)], { dir: dr });
+  mesh.box(sx - sw - 0.09, sh, sz - sd - 0.09, sx + sw + 0.09, sh + 0.11, sz + sd + 0.09, C.roofTop, M.roof);
+  /* Fenster zur Aussicht */
+  mesh.box(sx + sw - 0.04, 0.95, sz - 0.42, sx + sw + 0.02, 1.75, sz + 0.42, C.glass, M.glass);
 
   /* --- Eingangspodeste vor den Nischen --- */
   for (const cx of [-7.15, 7.15]) {
