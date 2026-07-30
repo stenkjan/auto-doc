@@ -346,12 +346,12 @@ const M = {
 const C = {
   plaster:  [0.780, 0.635, 0.420],   // Lärche, Giebelfläche
   plasterIn:[0.845, 0.760, 0.605],   // Fichte 3-Schichtplatte
-  roofTop:  [0.075, 0.075, 0.082],   // Trapezblech RAL 9005
+  roofTop:  [0.115, 0.108, 0.098],   // Blechhaut, unter der Lattung nur als Fuge sichtbar
   soffit:   [0.795, 0.690, 0.500],   // Untersicht Holz
   batten:   [0.760, 0.585, 0.345],   // Lattung, frisch
   glass:    [0.055, 0.075, 0.095],
   frame:    [0.145, 0.145, 0.150],
-  slab:     [0.560, 0.545, 0.520],
+  slab:     [0.140, 0.138, 0.140],   // dunkler Sockel
   floorIn:  [0.720, 0.605, 0.440],
   terrace:  [0.735, 0.560, 0.330],   // Holzdeck
   terrain:  [0.300, 0.400, 0.170],   // Wiese
@@ -573,7 +573,7 @@ function buildShellEG(mesh, rng) {
     entryNiche(mesh, a0, a1, 0.92, sg);
   }
   /* Bodenplatte */
-  mesh.box(-HX, -0.55, -HZ, HX, F1, HZ, C.slab, M.concrete, { py: 1 });
+  mesh.box(-HX + 0.14, -0.55, -HZ + 0.14, HX - 0.14, F1, HZ - 0.14, C.slab, M.concrete, { py: 1 });
   mesh.box(-HX + WT, F1 - 0.03, -HZ + WT, HX - WT, F1, HZ - WT, C.floorIn, M.concrete);
 }
 
@@ -631,8 +631,24 @@ function buildRoof(mesh) {
   const yN = RIDGE + zN * TN, yS = RIDGE - zS * TN;
   const top = [[zN, yN], [0, RIDGE], [zS, yS]];
   const bot = [[zN, yN - RT], [0, RIDGE - RT], [zS, yS - RT]];
-  /* Untersicht in Holz, wie am Referenzfoto */
+  /* Untersicht in Holz */
   mesh.band(top, bot, -HX - OV_G, HX + OV_G, C.roofTop, M.roof, C.soffit);
+
+  /* Lattenhaut über dem Dach: dieselbe Lärche wie an der Wand, die Latten
+     laufen von der Traufe zum First. Damit wird der Baukörper zu einer
+     durchgehenden Holzhaut statt Wand plus Blechdach. */
+  const rng = mulberry(8821);
+  const bw = 0.055, gap = 0.050, dp = 0.052, step = bw + gap;
+  const rx0 = -HX - OV_G, rx1 = HX + OV_G;
+  const cnt = Math.max(1, Math.floor((rx1 - rx0) / step));
+  const off = (rx1 - rx0 - cnt * step + gap) / 2;
+  for (let k = 0; k < cnt; k++) {
+    const a = rx0 + off + k * step, b = a + bw;
+    const j = (rng() - 0.5) * 0.055;
+    const col = [clamp(C.batten[0] + j, 0, 1), clamp(C.batten[1] + j * 0.92, 0, 1),
+                 clamp(C.batten[2] + j * 0.80, 0, 1)];
+    mesh.band(top.map(q => [q[0], q[1] + dp]), top, a, b, col, M.batten);
+  }
 }
 
 function entryNiche(mesh, a0, a1, dep, sg) {
