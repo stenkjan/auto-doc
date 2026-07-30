@@ -372,6 +372,9 @@ const RIDGE = EAVE + (D / 2) * TN;
 const OV_N = 1.15, OV_S = 1.45, OV_G = 0.55, RT = 0.44;  // Dachüberstände / Dicke
 const TERR_Z0 = D / 2, TERR_Z1 = 10.6;                   // Terrasse
 const VX0 = 6.22, VX1 = 7.40, VZ0 = 0.45, VZ1 = 4.40;    // Treppenauge (gespiegelt)
+/* Galerie im Dachraum: je Einheit rund 12,6 m² am Giebelende, der Rest
+   bleibt Luftraum ueber dem Wohnraum. */
+const GAL_X = 6.20, GAL_Z0 = -1.55, GAL_Z1 = 1.42;
 const HX = L / 2, HZ = D / 2;
 
 /* -- Wand mit Öffnungen ---------------------------------------------------- */
@@ -573,15 +576,17 @@ function buildShellOG(mesh, rng) {
   wall(mesh, 'z', -HX + WT/2, -HZ, HZ, OGY, EAVE, WT, C.plaster, M.plaster, holesW);
   wall(mesh, 'z',  HX - WT/2, -HZ, HZ, OGY, EAVE, WT, C.plaster, M.plaster, holesE);
 
-  /* Geschossdecke mit zwei Treppenaugen (die Treppe steigt aus dem EG herauf) */
-  for (const [z0, z1] of [[-HZ, VZ0], [VZ1, HZ]]) {
-    mesh.box(-HX, F2 - 0.30, z0, HX, F2 - 0.03, z1, C.slab, M.concrete);
-    const a = Math.max(z0, -HZ + WT), b = Math.min(z1, HZ - WT);
-    if (b > a) mesh.box(-HX + WT, F2 - 0.04, a, HX - WT, F2, b, C.floorIn, M.concrete);
-  }
-  for (const [x0, x1] of [[-HX, -VX1], [-VX0, VX0], [VX1, HX]]) {
-    mesh.box(x0, F2 - 0.30, VZ0, x1, F2 - 0.03, VZ1, C.slab, M.concrete);
-    mesh.box(Math.max(x0, -HX + WT), F2 - 0.04, VZ0, Math.min(x1, HX - WT), F2, VZ1, C.floorIn, M.concrete);
+  /* Galerieplatten statt durchgehender Geschossdecke: je Einheit eine
+     Plattform am Giebelende, dazu der Podest-Streifen an der Treppe. */
+  for (const sg of [-1, 1]) {
+    const gx0 = sg > 0 ? -HX : GAL_X, gx1 = sg > 0 ? -GAL_X : HX;
+    mesh.box(gx0, F2 - 0.30, GAL_Z0, gx1, F2 - 0.03, GAL_Z1, C.slab, M.concrete);
+    mesh.box(Math.max(gx0, -HX + WT), F2 - 0.04, GAL_Z0,
+             Math.min(gx1, HX - WT), F2, GAL_Z1, C.floorIn, M.concrete);
+    /* Podest, auf dem die Treppe ankommt */
+    const px0 = sg > 0 ? -VX1 : VX0, px1 = sg > 0 ? -VX0 : VX1;
+    mesh.box(px0, F2 - 0.30, GAL_Z1, px1, F2 - 0.03, VZ0, C.slab, M.concrete);
+    mesh.box(px0, F2 - 0.04, GAL_Z1, px1, F2, VZ0, C.floorIn, M.concrete);
   }
   battens(mesh, 'x', -HZ, -HX, HX, F2 + 0.02, EAVE - 0.04, rng, [], { dir: -1 });
   battens(mesh, 'x',  HZ, -HX, HX, F2 + 0.02, EAVE - 0.04, rng, [], { dir:  1 });
@@ -814,24 +819,22 @@ function buildUnit(mesh, sg, floor) {
     planter(mesh, X(-6.75), -3.60, 0.22, 0.40, y);
   } else {
     /* OG: Schlafen außen, Bad, offener Wohnraum, Loggia nach Süden */
-    wz(-2.30, -10.44, -6.60, [dr(-8.10, -7.20)]);
-    wx(-6.60, -4.64, -2.30);
-    wx(-7.72, -2.30,  4.64, [dr(-0.15, 0.75)]);
-    bathroom(mesh, X(-9.10) - (sg>0?0:1.5), -4.4, X(-9.10) + (sg>0?1.5:0), -2.5, y);
-    bed(mesh, X(-9.20), 2.05, 1.60, 2.00, true, y);
-    wardrobe(mesh, Math.min(X(-10.30), X(-8.90)), Math.max(X(-10.30), X(-8.90)), -2.12, -1.52, y);
-    /* Treppenauge mit Brüstung */
-    const vx0 = Math.min(X(-VX0), X(-VX1)), vx1 = Math.max(X(-VX0), X(-VX1));
-    mesh.box(vx0 - 0.10, y, VZ0, vx0, y + 1.00, VZ1, C.plasterIn, M.plasterIn);
-    mesh.box(vx1, y, VZ0, vx1 + 0.10, y + 1.00, VZ1, C.plasterIn, M.plasterIn);
-    mesh.box(vx0 - 0.10, y, VZ1, vx1 + 0.10, y + 1.00, VZ1 + 0.10, C.plasterIn, M.plasterIn);
-    counter(mesh, Math.min(X(-4.35), X(-2.05)), Math.max(X(-4.35), X(-2.05)), -4.60, 0.62, 1, y);
-    sofa(mesh, X(-5.20), -0.55, 1.95, 1, y);
-    armchair(mesh, X(-4.05), 1.55, sg > 0 ? -1.9 : 1.9 + PI, y);
-    mesh.cyl([X(-5.85), 1.05], y, y + 0.36, 0.30, 16, C.fabric, M.fabric, true);
-    table(mesh, X(-1.85), 1.85, 1.05, 1.55,
-      [[-0.85, -0.42, PI/2], [-0.85, 0.42, PI/2], [0.85, -0.42, -PI/2], [0.85, 0.42, -PI/2]], y);
-    planter(mesh, X(-6.30), -1.05, 0.22, 0.40, y);
+    /* Galerie: nur Schlafbereich. Kein Bad, keine Küche — die liegen im EG. */
+    const gx0 = Math.min(X(-HX + WT), X(-GAL_X)), gx1 = Math.max(X(-HX + WT), X(-GAL_X));
+    bed(mesh, X(-9.20), 0.10, 1.60, 2.00, true, y);
+    wardrobe(mesh, Math.min(X(-10.25), X(-8.85)), Math.max(X(-10.25), X(-8.85)),
+             GAL_Z1 - 0.62, GAL_Z1 - 0.02, y);
+    /* Brüstung an den offenen Kanten der Galerie */
+    const inner = sg > 0 ? gx1 : gx0;                       // Kante zum Luftraum
+    mesh.box(inner - 0.09, y, GAL_Z0, inner + 0.09, y + 1.02, GAL_Z1, C.plasterIn, M.plasterIn);
+    for (const zc of [GAL_Z0, GAL_Z1]) {
+      const out = zc === GAL_Z0 ? -0.09 : 0.09;
+      mesh.box(gx0, y, zc - 0.09, gx1, y + 1.02, zc + 0.09, C.plasterIn, M.plasterIn);
+    }
+    /* Brüstung am Treppenpodest */
+    const px0 = Math.min(X(-VX0), X(-VX1)), px1 = Math.max(X(-VX0), X(-VX1));
+    mesh.box(px0 - 0.09, y, GAL_Z1, px0 + 0.09, y + 1.02, VZ0, C.plasterIn, M.plasterIn);
+    mesh.box(px1 - 0.09, y, GAL_Z1, px1 + 0.09, y + 1.02, VZ0, C.plasterIn, M.plasterIn);
   }
 }
 
@@ -1767,7 +1770,7 @@ const SHOTS = [
     sub: 'Zwei gespiegelte Einheiten: Schlafen außen, Bad und Vorraum nach Norden, offenes Wohnen zur Terrasse.',
     pos: [0.6, 54.0, 4.2], tgt: [0.0, 0.3, 2.4], fov: 22, mode: 'eg', drift: 'spin' },
   { id: 'og', name: 'Grundriss Obergeschoss',
-    sub: 'Zweite Ebene im Dachraum, Längsseiten voll verglast hinter der Lattung.',
+    sub: 'Galerie im Dachraum, 12,6 m² je Einheit: Schlafbereich am Giebel, dazwischen Luftraum über dem Wohnraum.',
     pos: [-0.6, 54.0, 3.8], tgt: [0.0, 3.1, 2.0], fov: 22, mode: 'og', drift: 'spin' },
   { id: 'umgebung', name: 'Umgebung',
     sub: 'Das Haus im Gelände: weiche Geländekuppen, Baumgruppe und Nebengebäude im Osten, Zufahrt im Westen.',
