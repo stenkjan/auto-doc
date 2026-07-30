@@ -369,7 +369,7 @@ const F1 = 0.18, C1 = 2.80;      // EG: Fußboden / Rohdecke
 const F2 = 3.00, EAVE = 5.58;    // OG: Fußboden / Traufe
 const PITCH = 26 * DEG, TN = Math.tan(PITCH);
 const RIDGE = EAVE + (D / 2) * TN;
-const OV_N = 1.15, OV_S = 1.45, OV_G = 0.55, RT = 0.30;  // Dachüberstände / Dicke
+const OV_N = 1.15, OV_S = 1.45, OV_G = 0.55, RT = 0.44;  // Dachüberstände / Dicke
 const TERR_Z0 = D / 2, TERR_Z1 = 10.6;                   // Terrasse
 const VX0 = 6.22, VX1 = 7.40, VZ0 = 0.45, VZ1 = 4.40;    // Treppenauge (gespiegelt)
 const HX = L / 2, HZ = D / 2;
@@ -840,7 +840,8 @@ function buildHardscape(mesh, rng) {
   /* --- Terrasse mit mittiger Trennscheibe --- */
   mesh.box(-HX, -0.30, TERR_Z0, HX, 0.0, TERR_Z1, C.terrace, M.concrete);
   mesh.box(-HX - 0.06, -0.34, TERR_Z1 - 0.06, HX + 0.06, -0.16, TERR_Z1 + 0.06, C.terrace, M.concrete);
-  mesh.box(-0.09, 0.0, TERR_Z0, 0.09, 2.05, TERR_Z1 - 1.4, C.plaster, M.plaster);
+  /* Trennscheibe zwischen den beiden Terrassen, auf voller Tiefe */
+  mesh.box(-0.11, 0.0, TERR_Z0 - 0.3, 0.11, 2.25, TERR_Z1, C.plaster, M.plaster);
   mesh.box(-6.5, -0.62, TERR_Z1, 6.5, -0.30, TERR_Z1 + 0.42, C.terrace, M.concrete);
 
   /* --- Eingangspodeste vor den Nischen --- */
@@ -2043,13 +2044,13 @@ function frame(now) {
   const wantOpen = clamp(roofTarget + (mode === 'eg' || mode === 'og' ? 1 : 0), 0, 1);
   roofOpen += (wantOpen - roofOpen) * Math.min(1, dt * 3.0);
   const ro = smoothstep(0, 1, roofOpen);
-  groups.roof.opacity = 1 - ro;
-  groups.roof.offset = [0, ro * 7.5, 0];
+  groups.roof.opacity = 1 - smoothstep(0.62, 1.0, ro);   // bleibt lange massiv
+  groups.roof.offset = [0, ro * 16.0, 0];                // fährt ganz aus dem Bild
   const hideOG = (mode === 'eg') ? ro : 0;
   groups.shellOG.opacity = 1 - hideOG;
-  groups.shellOG.offset = [0, hideOG * 5.0, 0];
+  groups.shellOG.offset = [0, 0, 0];
   groups.intOG.opacity = 1 - hideOG;
-  groups.intOG.offset = [0, hideOG * 5.0, 0];
+  groups.intOG.offset = [0, 0, 0];
   groups.intEG.opacity = 1;
 
   /* Sonne */
