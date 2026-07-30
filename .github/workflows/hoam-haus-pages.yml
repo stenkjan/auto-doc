@@ -3,12 +3,16 @@ name: Hoam House 3D-Szene auf GitHub Pages
 # Veröffentlicht die eigenständige Datei hoam-haus-3d-szene.html als
 # GitHub-Pages-Seite. Die Next.js-App dieses Repos läuft auf Vercel und
 # bleibt davon unberührt.
+#
+# EINMALIG NÖTIG: Settings -> Pages -> Build and deployment -> Source auf
+# "GitHub Actions" stellen. Der Actions-Token darf eine Pages-Seite nicht
+# selbst anlegen ("Resource not accessible by integration"), deshalb ist
+# dieser eine Klick unvermeidbar. Danach läuft alles automatisch.
 on:
   push:
     branches: [main]
     paths:
       - hoam-haus-3d-szene.html
-      - .github/workflows/hoam-haus-pages.yml
   workflow_dispatch:
 
 permissions:
@@ -37,8 +41,6 @@ jobs:
           cp hoam-haus-3d-szene.html _site/index.html
 
       - uses: actions/configure-pages@v5
-        with:
-          enablement: true
 
       - uses: actions/upload-pages-artifact@v3
         with:
