@@ -22,6 +22,7 @@
   /* ---------- title ---------- */
   .brand{position:absolute;left:34px;top:30px;pointer-events:none}
   .brand h1{margin:0;font-size:12px;font-weight:600;letter-spacing:.42em;text-transform:uppercase}
+  .brand,.caption,.rail{text-shadow:0 1px 3px rgba(255,255,255,.55),0 0 14px rgba(255,255,255,.4)}
   .brand p{margin:7px 0 0;font-size:10.5px;letter-spacing:.24em;text-transform:uppercase;color:var(--ink-soft)}
 
   /* ---------- shot caption ---------- */
@@ -35,7 +36,7 @@
   /* ---------- shot rail ---------- */
   .rail{position:absolute;right:30px;top:50%;transform:translateY(-50%);
     display:flex;flex-direction:column;gap:2px;align-items:flex-end}
-  .rail button{appearance:none;background:none;border:0;cursor:pointer;color:var(--ink-soft);
+  .rail button{appearance:none;background:none;border:0;cursor:pointer;color:#2b2f33;
     font:inherit;font-size:10px;letter-spacing:.2em;text-transform:uppercase;
     padding:7px 0 7px 16px;display:flex;align-items:center;gap:11px;transition:color .25s}
   .rail button i{display:block;width:16px;height:1px;background:currentColor;opacity:.5;transition:width .3s,opacity .3s}
@@ -269,14 +270,15 @@ class Mesh {
     if (!s.ny) this.quad([x0,y0,z0],[x1,y0,z0],[x1,y0,z1],[x0,y0,z1], col, par, wind);
   }
   /* Band zwischen zwei Polylinien im (z,y)-Profil, extrudiert entlang X */
-  band(top, bot, x0, x1, col, par) {
+  band(top, bot, x0, x1, col, par, colBot) {
+    const cb = colBot || col;
     for (let k = 0; k < top.length - 1; k++) {
       const a = top[k], b = top[k+1];
       this.quad([x1,a[1],a[0]],[x0,a[1],a[0]],[x0,b[1],b[0]],[x1,b[1],b[0]], col, par);
     }
     for (let k = 0; k < bot.length - 1; k++) {
       const a = bot[k], b = bot[k+1];
-      this.quad([x1,b[1],b[0]],[x0,b[1],b[0]],[x0,a[1],a[0]],[x1,a[1],a[0]], col, par);
+      this.quad([x1,b[1],b[0]],[x0,b[1],b[0]],[x0,a[1],a[0]],[x1,a[1],a[0]], cb, par);
     }
     const n = top.length - 1, m = bot.length - 1;
     // Stirnflächen
@@ -339,23 +341,25 @@ const M = {
   metal:    [0.30, 0.55, 3],
   bark:     [0.85, 0.06, 0],
 };
+/* Farbfassung nach den Referenzfotos: Lärche sägerau, Trapezblech RAL 9005,
+   Fichte-3-Schichtplatte innen, Wiese, blauer Himmel. */
 const C = {
-  plaster:  [0.955, 0.952, 0.945],
-  plasterIn:[0.935, 0.935, 0.932],
-  roofTop:  [0.965, 0.965, 0.962],
-  soffit:   [0.918, 0.914, 0.905],
-  batten:   [0.902, 0.888, 0.864],
-  glass:    [0.168, 0.180, 0.192],
-  frame:    [0.30, 0.31, 0.32],
-  slab:     [0.918, 0.914, 0.906],
-  floorIn:  [0.876, 0.872, 0.863],
-  terrace:  [0.925, 0.921, 0.913],
-  terrain:  [0.930, 0.930, 0.926],
-  stone:    [0.878, 0.874, 0.866],
-  fabric:   [0.955, 0.953, 0.948],
-  wood:     [0.888, 0.872, 0.845],
-  metal:    [0.62, 0.63, 0.635],
-  bark:     [0.905, 0.902, 0.894],
+  plaster:  [0.780, 0.635, 0.420],   // Lärche, Giebelfläche
+  plasterIn:[0.845, 0.760, 0.605],   // Fichte 3-Schichtplatte
+  roofTop:  [0.075, 0.075, 0.082],   // Trapezblech RAL 9005
+  soffit:   [0.795, 0.690, 0.500],   // Untersicht Holz
+  batten:   [0.760, 0.585, 0.345],   // Lattung, frisch
+  glass:    [0.055, 0.075, 0.095],
+  frame:    [0.145, 0.145, 0.150],
+  slab:     [0.560, 0.545, 0.520],
+  floorIn:  [0.720, 0.605, 0.440],
+  terrace:  [0.735, 0.560, 0.330],   // Holzdeck
+  terrain:  [0.300, 0.400, 0.170],   // Wiese
+  stone:    [0.545, 0.540, 0.515],
+  fabric:   [0.880, 0.865, 0.830],
+  wood:     [0.700, 0.520, 0.300],
+  metal:    [0.330, 0.335, 0.345],
+  bark:     [0.400, 0.360, 0.310],
 };
 
 /* =========================================================== Geometrie ==== */
@@ -371,8 +375,12 @@ const WT = 0.36;           // Außenwand
 const IT = 0.14;           // Innenwand
 const PT = 0.36;           // Trennwand der beiden Einheiten (x = 0)
 const F1 = 0.18, C1 = 2.80;      // EG: Fußboden / Rohdecke
-const F2 = 3.00, EAVE = 5.58;    // OG: Fußboden / Traufe
-const PITCH = 26 * DEG, TN = Math.tan(PITCH);
+const F2 = 3.00, EAVE = 3.62;    // OG: Fußboden / Traufe (Kniestock, Galerie im Dach)
+/* Der Baukörper wird nach dem Bauen in X und Z um PS gestaucht, die Höhen
+   bleiben. Damit die gebaute Neigung am Ende die 34,02° des Typenplans
+   trifft, muss sie hier flacher angesetzt werden. */
+const PITCH_REAL = 34.02 * DEG;
+const PITCH = Math.atan(Math.tan(PITCH_REAL) * PS), TN = Math.tan(PITCH);
 const RIDGE = EAVE + (D / 2) * TN;
 const OV_N = 1.15, OV_S = 1.45, OV_G = 0.55, RT = 0.44;  // Dachüberstände / Dicke
 const TERR_Z0 = D / 2, TERR_Z1 = D / 2 + 4.24 / PS;      // Terrasse, 73,7 m²
@@ -567,14 +575,8 @@ function buildShellEG(mesh, rng) {
 
 function buildShellOG(mesh, rng) {
   /* OG: Längsseiten durchgehend verglast, davor die Lattung als Filter */
-  const holesN = [hole(-HX + WT, HX - WT, F2 + 0.30, EAVE - 0.28)];
-  const holesS = [hole(-HX + WT, HX - WT, F2 + 0.30, EAVE - 0.28)];
-  const holesW = [], holesE = [];
-  for (const sg of [-1, 1]) {
-    holesW.push(hole(0.70, 1.60, F2 + 0.75, F2 + 2.05));
-    holesW.push(hole(2.60, 3.50, F2 + 0.75, F2 + 2.05));
-  }
-  for (const h of holesW) holesE.push(h);
+  /* Kniestock: die Galerie bekommt ihr Licht über die verglasten Giebel. */
+  const holesN = [], holesS = [], holesW = [], holesE = [];
 
   const OGY = F2 - 0.06;   // leichte Überlappung, sonst Naht an der Geschossfuge
   wall(mesh, 'x', -HZ + WT/2, -HX, HX, OGY, EAVE, WT, C.plaster, M.plaster, holesN);
@@ -594,13 +596,30 @@ function buildShellOG(mesh, rng) {
     mesh.box(px0, F2 - 0.30, GAL_Z1, px1, F2 - 0.03, VZ0, C.slab, M.concrete);
     mesh.box(px0, F2 - 0.04, GAL_Z1, px1, F2, VZ0, C.floorIn, M.concrete);
   }
-  battens(mesh, 'x', -HZ, -HX, HX, F2 + 0.02, EAVE - 0.04, rng, [], { dir: -1 });
-  battens(mesh, 'x',  HZ, -HX, HX, F2 + 0.02, EAVE - 0.04, rng, [], { dir:  1 });
+  battens(mesh, 'x', -HZ, -HX, HX, F2 + 0.02, EAVE - 0.03, rng, [], { dir: -1 });
+  battens(mesh, 'x',  HZ, -HX, HX, F2 + 0.02, EAVE - 0.03, rng, [], { dir:  1 });
 
   /* Giebeldreiecke */
-  const GY = EAVE - 0.07;
-  mesh.triPrism([[-HZ, GY], [0, RIDGE - RT + 0.02], [HZ, GY]], HX - WT, HX, C.plaster, M.plaster);
-  mesh.triPrism([[-HZ, GY], [0, RIDGE - RT + 0.02], [HZ, GY]], -HX, -HX + WT, C.plaster, M.plaster);
+  const GY = EAVE - 0.07, AP = RIDGE - RT + 0.02;
+  for (const [gx0, gx1, sd] of [[HX - WT, HX, 1], [-HX, -HX + WT, -1]]) {
+    /* Verglastes Giebeldreieck, etwas eingerückt */
+    mesh.triPrism([[-HZ + 0.46, GY + 0.28], [0, AP - 0.62], [HZ - 0.46, GY + 0.28]],
+                  gx0 + 0.10, gx1 - 0.10, C.glass, M.glass);
+    /* Rahmen: Traufriegel und die beiden Schrägen */
+    mesh.box(gx0, GY, -HZ, gx1, GY + 0.26, HZ, C.wood, M.wood);
+    const fx = sd > 0 ? gx1 - 0.13 : gx0 + 0.13;
+    /* Schräge Rahmenhölzer als durchgehende Bänder entlang der Dachschräge */
+    for (const sz of [-1, 1]) {
+      /* deutlich unter der Dachunterseite, sonst stösst der Sparren durch */
+      const t = [[sz * HZ, GY - 0.10], [0, AP - 0.46]];
+      mesh.band(t, t.map(q => [q[0], q[1] - 0.24]), fx - 0.13, fx + 0.13, C.wood, M.wood);
+    }
+    /* Pfosten */
+    for (const zc of [-HZ * 0.42, 0, HZ * 0.42]) {
+      const yTop = GY + (AP - 0.46 - GY) * (1 - Math.abs(zc) / HZ) - 0.30;
+      mesh.box(fx - 0.09, GY, zc - 0.09, fx + 0.09, yTop, zc + 0.09, C.wood, M.wood);
+    }
+  }
 }
 
 function buildRoof(mesh) {
@@ -608,14 +627,8 @@ function buildRoof(mesh) {
   const yN = RIDGE + zN * TN, yS = RIDGE - zS * TN;
   const top = [[zN, yN], [0, RIDGE], [zS, yS]];
   const bot = [[zN, yN - RT], [0, RIDGE - RT], [zS, yS - RT]];
-  mesh.band(top, bot, -HX - OV_G, HX + OV_G, C.roofTop, M.roof);
-  /* Untersicht etwas dunkler absetzen */
-  const eps = 0.004;
-  for (const [z0, z1] of [[zN, -0.02], [0.02, zS]]) {
-    const y0 = RIDGE - RT - Math.abs(z0) * TN, y1 = RIDGE - RT - Math.abs(z1) * TN;
-    mesh.quad([HX + OV_G - eps, y1 - eps, z1], [-HX - OV_G + eps, y1 - eps, z1],
-              [-HX - OV_G + eps, y0 - eps, z0], [HX + OV_G - eps, y0 - eps, z0], C.soffit, M.soffit);
-  }
+  /* Untersicht in Holz, wie am Referenzfoto */
+  mesh.band(top, bot, -HX - OV_G, HX + OV_G, C.roofTop, M.roof, C.soffit);
 }
 
 function entryNiche(mesh, a0, a1, dep, sg) {
@@ -798,8 +811,17 @@ function buildUnit(mesh, sg, floor) {
   };
   const dr = (a0, a1) => hole(a0, a1, y, y + 2.10, { open: true });
 
-  /* Trennwand zur Nachbareinheit */
-  if (sg > 0) mesh.box(-PT/2, y - 0.30, -HZ, PT/2, y + hh, HZ, C.plasterIn, M.plasterIn);
+  /* Trennwand zur Nachbareinheit. Im Dachraum folgt sie der Dachunterseite,
+     sonst stösst sie durch die Dachhaut. */
+  if (sg > 0) {
+    if (floor === 0) {
+      mesh.box(-PT/2, y - 0.30, -HZ, PT/2, y + hh, HZ, C.plasterIn, M.plasterIn);
+    } else {
+      const uE = EAVE - RT - 0.03, uR = RIDGE - RT - 0.06;
+      mesh.box(-PT/2, y - 0.30, -HZ, PT/2, uE, HZ, C.plasterIn, M.plasterIn);
+      mesh.triPrism([[-HZ, uE], [0, uR], [HZ, uE]], -PT/2, PT/2, C.plasterIn, M.plasterIn);
+    }
+  }
 
   if (floor === 0) {
     /* Nordzone: WC | Bad | Vorraum | Küche */
@@ -1078,9 +1100,9 @@ const TREES = [
 const SKY_GLSL = `
 vec3 skyColor(vec3 dir, vec3 sunDir, float warm){
   float t = clamp(dir.y, 0.0, 1.0);
-  vec3 hor = vec3(1.0, 0.996, 0.988);
-  vec3 zen = mix(vec3(0.905,0.930,0.968), vec3(0.965,0.935,0.895), warm);
-  vec3 c = mix(hor, zen, pow(t, 0.72));
+  vec3 hor = mix(vec3(0.780,0.855,0.930), vec3(0.960,0.820,0.640), warm);
+  vec3 zen = mix(vec3(0.180,0.380,0.780), vec3(0.330,0.430,0.720), warm);
+  vec3 c = mix(hor, zen, pow(t, 0.62));
   float s = max(dot(normalize(dir), sunDir), 0.0);
   c += vec3(1.0,0.965,0.90) * pow(s, 260.0) * 0.85;
   c += vec3(1.0,0.975,0.94) * pow(s, 7.0) * 0.085;
@@ -1185,8 +1207,10 @@ void main(){
   // Terrain: feines Korn wie im Referenzrendering
   if(vPar.z > 0.5 && vPar.z < 1.5){
     float g = vnoise(vWorld.xz * 26.0) * 0.5 + vnoise(vWorld.xz * 7.3) * 0.5;
-    alb *= 0.955 + 0.075 * g;
-    alb *= 1.0 - 0.035 * fbm(vWorld.xz * 0.35);
+    float w = fbm(vWorld.xz * 0.22);
+    alb *= 0.86 + 0.30 * g;                       // Halmstruktur
+    alb = mix(alb, alb * vec3(1.22, 1.06, 0.72), w * 0.75);   // trockenere Flecken
+    alb = mix(alb, alb * vec3(0.80, 0.94, 0.72), fbm(vWorld.xz * 0.62 + 11.0) * 0.5);
   }
 
   float ndl = max(dot(N, uSunDir), 0.0);
@@ -1279,7 +1303,7 @@ void main(){
   vec3 N = normalize(vNrm);
   vec3 V = normalize(uCamPos - vWorld);
   if(dot(N, V) < 0.0) N = -N;                      // Blätter zweiseitig
-  vec3 alb = vec3(0.790, 0.800, 0.752) * vTint * (0.74 + 0.40 * tx.r);
+  vec3 alb = vec3(0.235, 0.400, 0.135) * vTint * (0.74 + 0.40 * tx.r);
 
   vec4 lc = uLightVP * vec4(vWorld, 1.0);
   vec3 pc = lc.xyz / lc.w * 0.5 + 0.5;
@@ -1493,7 +1517,7 @@ void main(){
   vec3 hi = k + (vec3(1.0) - k) * (vec3(1.0) - exp(-(c - k) / (vec3(1.0) - k)));
   c = mix(c, hi, step(k, c));
   c = pow(max(c, vec3(0.0)), vec3(0.965));
-  c = mix(vec3(dot(c, vec3(0.2126, 0.7152, 0.0722))), c, 0.94);   // fast monochrom
+
 
   float r = length((vUV - 0.5) * vec2(uRes.x / uRes.y, 1.0));
   c *= 1.0 - uVign * smoothstep(0.55, 1.28, r);
@@ -2000,7 +2024,7 @@ function updateSun(u) {                       // u = 0…1 (Morgen → Abend)
   const l = Math.hypot(...sunDir); sunDir = sunDir.map(v => v / l);
   const low = 1 - smoothstep(6 * DEG, 34 * DEG, alt);
   warm = low;
-  const inten = lerp(0.62, 0.88, smoothstep(4 * DEG, 40 * DEG, alt));
+  const inten = lerp(1.35, 2.05, smoothstep(4 * DEG, 40 * DEG, alt));
   sunCol = [inten * lerp(1.0, 1.10, low), inten * lerp(1.0, 0.955, low), inten * lerp(1.0, 0.865, low)];
 }
 
@@ -2154,8 +2178,8 @@ function frame(now) {
   gl.viewport(0, 0, RW, RH);
   gl.clearColor(1, 1, 1, 0);
   gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
-  const skyUp = [lerp(0.788, 0.806, 1 - warm), lerp(0.797, 0.820, 1 - warm), lerp(0.810, 0.842, 1 - warm)];
-  const skyDn = [0.652, 0.646, 0.634];
+  const skyUp = [lerp(0.520, 0.455, 1 - warm), lerp(0.550, 0.530, 1 - warm), lerp(0.575, 0.700, 1 - warm)];
+  const skyDn = [0.360, 0.375, 0.290];
 
   gl.useProgram(progSurf.p);
   const su = progSurf.u;
@@ -2255,10 +2279,10 @@ function frame(now) {
   gl.uniformMatrix4fv(cu.uInvVP, false, mInvVP);
   gl.uniform3fv(cu.uCamPos, eye);
   gl.uniform3fv(cu.uSunDir, sunDir);
-  gl.uniform3f(cu.uFogCol, 1.0, 0.998, 0.994);
+  gl.uniform3f(cu.uFogCol, 0.760, 0.840, 0.920);
   gl.uniform2f(cu.uRes, RW, RH);
   gl.uniform1f(cu.uExposure, 1.03);
-  gl.uniform1f(cu.uFog, 0.0092);
+  gl.uniform1f(cu.uFog, 0.0068);
   gl.uniform1f(cu.uAOAmt, 0.92);
   gl.uniform1f(cu.uFade, fade);
   gl.uniform1f(cu.uTime, t);
